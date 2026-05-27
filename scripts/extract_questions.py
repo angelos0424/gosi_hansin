@@ -203,7 +203,7 @@ def is_loose_number_heading(line: str) -> bool:
 
 
 def has_numeric_options(text: str) -> bool:
-    return len(re.findall(r"(?<!\d)(?:[1-9]|10)\)\s+", text)) >= 2
+    return len(re.findall(r"(?<!\d)(?:[1-9]|10)\)\s*", text)) >= 2
 
 
 def has_blank_placeholders(text: str) -> bool:
@@ -237,7 +237,7 @@ def has_circled_options(text: str) -> bool:
 
 def question_type(text: str, context: str = "") -> str:
     combined = f"{context} {text}"
-    if re.search(r"[○Ⅹ]", combined) or re.search(r"O\s*/\s*X", combined, re.I):
+    if re.search(r"[○Ⅹ]", combined) or re.search(r"O\s*(?:/|,?\s*혹은)\s*X", combined, re.I):
         return "ox"
     if (has_circled_options(text) or has_numeric_options(text)) and CHOICE_CUE_RE.search(combined):
         return "choice"
@@ -667,35 +667,91 @@ def apply_display_labels(questions: list[dict]) -> None:
         used.add(candidate)
 
 
-def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
-    if source.path.name != "2023년도_제2차_총회_목사고시_헌법_문제_20230620_.pdf":
-        return
+def normalize_manual_text(text: str) -> str:
+    text = re.sub(r"\s+", " ", text).strip()
+    replacements = {
+        "기술하 고": "기술하고",
+        "무엇입 니까": "무엇입니까",
+        "무 엇입니까": "무엇입니까",
+        "무엇 입니까": "무엇입니까",
+    }
+    for before, after in replacements.items():
+        text = text.replace(before, after)
+    return text
 
-    choice_instruction = "※ 한 가지를 고르는 문제입니다. ( ) 안에 정답의 번호를 쓰십시오."
+
+def normalize_numeric_option(option: str) -> str:
+    return re.sub(r"^((?:[1-9]|10)\))\s*", r"\1 ", normalize_manual_text(option))
+
+
+def repair_choice_from_numeric_options(question: dict) -> None:
+    full_text = normalize_manual_text(question.get("text", ""))
+    options = [normalize_numeric_option(option) for option in split_options(full_text)]
+    if not options:
+        return
+    marker = full_text.find(options[0])
+    if marker < 0:
+        compact_first = re.sub(r"^((?:[1-9]|10)\))\s+", r"\1", options[0])
+        marker = full_text.find(compact_first)
+    title = normalize_manual_text(full_text[:marker]) if marker >= 0 else normalize_manual_text(question.get("title", ""))
+    body = " ".join(options)
+    question["groupTitle"] = title
+    question["title"] = title
+    question["body"] = body
+    question["text"] = normalize_manual_text(f"{title} {body}")
+    question["type"] = "choice"
+    question["options"] = options
+
+
+def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
     by_label = {str(question.get("numberLabel")): question for question in questions}
 
-    q14 = by_label.get("14")
-    if q14:
-        for key in ("body", "text"):
-            q14[key] = re.sub(rf"\s*{re.escape(choice_instruction)}\s*", " ", q14.get(key, "")).strip()
-            q14[key] = re.sub(r"\s+", " ", q14[key]).strip()
+    if source.path.name == "2010년도_총회_목사고시___교단헌법.pdf":
+        for label in map(str, range(1, 11)):
+            question = by_label.get(label)
+            if question:
+                repair_choice_from_numeric_options(question)
 
-    q15 = by_label.get("15")
-    if q15:
-        q15["groupTitle"] = choice_instruction
-        q15["section"] = choice_instruction
+        q11 = by_label.get("11")
+        if q11:
+            q11["type"] = "ox"
+            q11["options"] = []
 
-    for label in ("15", "16", "17", "18"):
-        question = by_label.get(label)
-        if not question:
-            continue
-        question["type"] = "choice"
-        question["options"] = split_options(question.get("text", ""))
-
-    for label in ("8", "19"):
-        question = by_label.get(label)
-        if question:
+    if source.path.name == "2010년도_총회_목사고시___성경.pdf":
+        for question in questions:
+            title = normalize_manual_text(re.sub(r"^\d+\)\s*", "", question.get("title", "")))
+            question["groupTitle"] = title
+            question["title"] = title
+            question["body"] = title
+            question["text"] = title
+            question["type"] = "essay"
             question["options"] = []
+
+    if source.path.name == "2023년도_제2차_총회_목사고시_헌법_문제_20230620_.pdf":
+        choice_instruction = "※ 한 가지를 고르는 문제입니다. ( ) 안에 정답의 번호를 쓰십시오."
+
+        q14 = by_label.get("14")
+        if q14:
+            for key in ("body", "text"):
+                q14[key] = re.sub(rf"\s*{re.escape(choice_instruction)}\s*", " ", q14.get(key, "")).strip()
+                q14[key] = re.sub(r"\s+", " ", q14[key]).strip()
+
+        q15 = by_label.get("15")
+        if q15:
+            q15["groupTitle"] = choice_instruction
+            q15["section"] = choice_instruction
+
+        for label in ("15", "16", "17", "18"):
+            question = by_label.get(label)
+            if not question:
+                continue
+            question["type"] = "choice"
+            question["options"] = split_options(question.get("text", ""))
+
+        for label in ("8", "19"):
+            question = by_label.get(label)
+            if question:
+                question["options"] = []
 
 
 def collect_sources() -> list[SourceFile]:
