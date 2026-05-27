@@ -191,10 +191,6 @@ function App() {
             <Metric label="복습" value={stats.flagged} icon={<Flag size={18} />} />
           </div>
         </div>
-        <div className="preview-stack" aria-label="문서 미리보기">
-          <img src="/previews/bible-2026-1.png" alt="2026년 성경 시험문제 미리보기" />
-          <img src="/previews/constitution-2026-1.png" alt="2026년 교단헌법 시험문제 미리보기" />
-        </div>
       </section>
 
       <section className="workspace">
@@ -252,9 +248,9 @@ function App() {
         <section className="practice-panel">
           <div className="panel-header">
             <div>
-                <span className="eyeless-label">현재 세트</span>
-                <h2>{filteredQuestions.length.toLocaleString()}개 중 {practiceQuestions.length}개 풀이</h2>
-              </div>
+              <span className="eyeless-label">현재 세트</span>
+              <h2>{filteredQuestions.length.toLocaleString()}개 중 {practiceQuestions.length}개 풀이</h2>
+            </div>
             <button className="ghost-button small" onClick={resetAnswers}>
               <RotateCcw size={16} /> 기록 초기화
             </button>
