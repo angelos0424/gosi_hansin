@@ -7,12 +7,12 @@
     "extract": "python3 scripts/extract_questions.py"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-react": "^4.3.4",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "^5.4.14"
   },
   "devDependencies": {
     "playwright": "^1.60.0"
