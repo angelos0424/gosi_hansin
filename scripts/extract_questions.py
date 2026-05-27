@@ -673,7 +673,7 @@ def apply_display_labels(questions: list[dict]) -> None:
         used.add(candidate)
 
 
-STRUCTURED_ITEM_RE = re.compile(r"(?<!^)\s+((?:[2-9]|1[0-9]|20)\))")
+STRUCTURED_ITEM_RE = re.compile(r"(?<!^)\s+((?:[2-9]|1[0-9]|20)\))(?=\s)")
 STRUCTURED_SPLIT_PATTERNS = [
     re.compile(r"\s+1\)\s+"),
     re.compile(r"\s+(?=①(?!\s*\)))"),
@@ -1168,6 +1168,22 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
             question = by_label.get(label)
             if question:
                 set_prompt(question, "정치치리총람집 관련 문제입니다. (각 3점)", prompt, "essay")
+        detail_bodies = {
+            "18": "전도목사와 담임목사는 언제부터 당회장이 되는가? (정치치리총람집 2. 목사 1)-(1)-[6])\n1) 전도목사 :\n2) 담임목사 :",
+            "20": "“인준투표”와 “선임투표”의 차이를 설명하시오. (정치치리총람집 2.목사 3)-[10])\n1) 인준 :\n2) 선임 :",
+        }
+        for label, body in detail_bodies.items():
+            question = by_label.get(label)
+            if question:
+                set_prompt(question, "정치치리총람집 관련 문제입니다. (각 3점)", body, "essay")
+        q28 = by_label.get("28")
+        if q28:
+            set_prompt(
+                q28,
+                "공동의회의 공고 절차와 개회 성수, 그리고 의결 정족수에 대해서 서술하시오. (정치 제12장 제67조, 제69조)",
+                "1) 공고절차 :\n2) 개회성수 :\n3) 의결 정족수 :",
+                "essay",
+            )
 
     if source.path.name == "2015년도_제2차_총회_목사고시___교단헌법.pdf":
         q17 = by_label.get("17")
