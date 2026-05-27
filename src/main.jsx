@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Download,
   FileText,
@@ -115,6 +116,7 @@ function App() {
   const [selectedDocumentId, setSelectedDocumentId] = useState(null);
   const [sourceDocument, setSourceDocument] = useState(null);
   const [practiceSeed, setPracticeSeed] = useState(0);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [answers, updateAnswer, resetAnswers] = useStoredAnswers();
 
   const years = useMemo(
@@ -286,7 +288,20 @@ function App() {
       </section>
 
       <section className="workspace">
-        <aside className="sidebar">
+        <aside className={`sidebar ${mobileFiltersOpen ? "open" : ""}`}>
+          <button
+            aria-expanded={mobileFiltersOpen}
+            className="filter-toggle"
+            type="button"
+            onClick={() => setMobileFiltersOpen((current) => !current)}
+          >
+            <span>
+              <ListFilter size={17} />
+              문제 필터
+            </span>
+            <ChevronDown size={18} />
+          </button>
+
           <div className="filter-card">
             <div className="filter-title">
               <Search size={17} />
