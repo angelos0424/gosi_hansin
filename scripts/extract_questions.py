@@ -14,7 +14,7 @@ OUT = ROOT / "src" / "questionData.json"
 HWP5TXT = Path("/Users/windows11/Library/Python/3.14/bin/hwp5txt")
 HWPJS = ROOT / "node_modules" / ".bin" / "hwpjs"
 MAX_GRP_LOOKAHEAD = 8
-CIRCLED_MARKERS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+CIRCLED_MARKERS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳⓵⓶⓷⓸⓹⓺⓻⓼⓽⓾➀➁➂➃➄➅➆➇➈➉"
 CHOICE_CUE_RE = re.compile(
     r"한\s*가지.*고르|정답의\s*번호|틀린|아닌|잘못|속하지\s*않|고르|골라|선택|"
     r"해당|어느\s*것|무엇입니까\?\s*\(\s*\)"
@@ -203,7 +203,7 @@ def is_loose_number_heading(line: str) -> bool:
 
 
 def has_numeric_options(text: str) -> bool:
-    return len(re.findall(r"(?<!\d)(?:[1-9]|10)\)\s*", text)) >= 2
+    return len(re.findall(r"(?<![\d(])(?:[1-9]|10)\)\s*", text)) >= 2
 
 
 def has_blank_placeholders(text: str) -> bool:
@@ -294,9 +294,11 @@ def split_options(text: str) -> list[str]:
         if not is_answer_key_marker(text, match.start())
     ]
     if len(matches) < 2:
-        matches = list(re.finditer(r"(?<!\d)(?:[1-9]|10)\)\s*", text))
+        matches = list(re.finditer(r"(?<![\d(])(?:[1-9]|10)\)\s*", text))
         if len(matches) < 2:
-            return []
+            matches = list(re.finditer(r"\(\s*(?:[1-9]|10)\s*\)\s*", text))
+            if len(matches) < 2:
+                return []
     options = []
     for i, match in enumerate(matches):
         start = match.start()
@@ -674,6 +676,12 @@ def apply_display_labels(questions: list[dict]) -> None:
 def normalize_manual_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s*\[(?:객관식|단답형|서술형|논술형)\].*$", "", text).strip()
+    text = re.sub(r"\s*[▶★]\s*(?:구약성경|신약성경|구약선택|신약선택|아래 물음에 맞게).*$", "", text).strip()
+    text = re.sub(r"\s*※\s*다음 .*$", "", text).strip()
+    text = re.sub(r"\s*※\s*다음의? 물음.*$", "", text).strip()
+    text = re.sub(r"\s*★\s*아래 물음.*$", "", text).strip()
+    text = re.sub(r"\s*※\s*맞는 것에.*$", "", text).strip()
+    text = re.sub(r"\s*\(다음의 성구가 나오는 성경구절을 적으시오\.\)\s*$", "", text).strip()
     replacements = {
         "기술하 고": "기술하고",
         "무엇입 니까": "무엇입니까",
@@ -694,6 +702,19 @@ def normalize_manual_text(text: str) -> str:
         "가르 치며": "가르치며",
         "이름 으로": "이름으로",
         "때” 가": "때”가",
+        "무엇인 가": "무엇인가",
+        "사 랑하라": "사랑하라",
+        "유 대와": "유대와",
+        "주 가": "주가",
+        "여기 지": "여기지",
+        "서술하시 오": "서술하시오",
+        "청 원": "청원",
+        "신 앙": "신앙",
+        "자 녀": "자녀",
+        "공동의 회": "공동의회",
+        "( 2)": "(2)",
+        "1- 2": "1-2",
+        "하나님의 니라": "하나님의 나라",
     }
     for before, after in replacements.items():
         text = text.replace(before, after)
@@ -701,7 +722,9 @@ def normalize_manual_text(text: str) -> str:
 
 
 def normalize_numeric_option(option: str) -> str:
-    return re.sub(r"^((?:[1-9]|10)\))\s*", r"\1 ", normalize_manual_text(option))
+    option = normalize_manual_text(option)
+    option = re.sub(r"^((?:[1-9]|10)\))\s*", r"\1 ", option)
+    return re.sub(r"^\(\s*((?:[1-9]|10))\s*\)\s*", r"(\1) ", option)
 
 
 def repair_choice_from_numeric_options(question: dict) -> None:
@@ -767,8 +790,30 @@ def repair_blank_prompt(question: dict) -> None:
     question["options"] = []
 
 
+def repair_current_prompt(question: dict) -> None:
+    if question.get("type") == "choice":
+        repair_choice_from_options(question)
+    elif question.get("type") == "blank":
+        repair_blank_prompt(question)
+    elif question.get("type") == "ox":
+        title = normalize_manual_text(question.get("title", ""))
+        body = normalize_manual_text(question.get("body", ""))
+        prompt = normalize_manual_text(f"{title} {body}") if body and body != title else title
+        question["groupTitle"] = prompt
+        question["title"] = prompt
+        question["body"] = prompt
+        question["text"] = prompt
+        question["options"] = []
+    else:
+        repair_essay_prompt(question)
+
+
 def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
     by_label = {str(question.get("numberLabel")): question for question in questions}
+
+    if 2014 <= source.year <= 2026:
+        for question in questions:
+            repair_current_prompt(question)
 
     if source.path.name == "2010년도_총회_목사고시___교단헌법.pdf":
         for label in map(str, range(1, 11)):
@@ -880,6 +925,170 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
                 repair_essay_prompt(question)
             else:
                 repair_essay_prompt(question, keep_body=bool(question.get("body") and question.get("body") != question.get("title")))
+
+    if source.path.name == "2015년도_제1차_총회_목사고시___교단헌법.pdf":
+        q19 = by_label.get("19")
+        if q19:
+            repair_essay_prompt(q19)
+
+    if source.path.name == "2015년도_제2차_총회_목사고시___교단헌법.pdf":
+        q17 = by_label.get("17")
+        if q17:
+            repair_essay_prompt(q17, keep_body=True)
+
+    if source.path.name == "2016년_제1차_목사고시_문제___성경.hwp":
+        q32 = by_label.get("3-2")
+        if q32:
+            repair_essay_prompt(q32)
+
+    if source.path.name == "2016년도_제2차_목사고시_문제___교단헌법.hwp":
+        q23 = by_label.get("23")
+        if q23:
+            repair_essay_prompt(q23)
+
+    if source.path.name == "2017년도_제1차_목사고시_문제___성경.hwp":
+        for label in {"3-2", "3-6", "3-7"}:
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+
+    if source.path.name == "2017년도_제2차_총회_목사고시_문제___헌법.hwp":
+        for label in map(str, range(23, 30)):
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+
+    if source.path.name == "2018년도_제1차_총회_목사고시_헌법_문제.pdf":
+        for label in map(str, range(4, 12)):
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+        q22 = by_label.get("22")
+        if q22:
+            repair_blank_prompt(q22)
+
+    if source.path.name == "2018년도_제2차_총회_목사고시_헌법_문제_1_.pdf":
+        for label in map(str, range(1, 11)):
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+        for label in map(str, range(11, 13)):
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+        for label in map(str, range(13, 21)):
+            question = by_label.get(label)
+            if question:
+                question["type"] = "choice"
+                repair_choice_from_options(question)
+        for label in map(str, range(21, 29)):
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+
+    if source.path.name == "2019년도_제2차_총회_목사고시_헌법문제.pdf":
+        q4 = by_label.get("4")
+        if q4:
+            q4["type"] = "choice"
+            repair_choice_from_options(q4)
+
+    if source.path.name == "2020년도_제1차_총회_목사고시_문제_헌법.pdf":
+        for label in {"1", "2", "3", "4", "18"}:
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+
+    if source.path.name == "2020년도_제1차_총회_목사고시_성경_문제.pdf":
+        for label in {f"2-{number}" for number in range(1, 21)}:
+            question = by_label.get(label)
+            if question:
+                question["type"] = "choice"
+                repair_choice_from_options(question)
+
+    if source.path.name == "2021년도_제1차_총회_목사고시_문제_성경.pdf":
+        for label in {"1", "2"}:
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question, keep_body=True)
+
+    if source.path.name == "2021년도_제2차_총회_목사고시_문제_헌법.pdf":
+        for label in {"6", "12", "23"}:
+            question = by_label.get(label)
+            if question:
+                question["type"] = "choice"
+                repair_choice_from_options(question)
+
+    if source.path.name == "2022년도_제1차_총회_목사고시_헌법_문제_20220118_.pdf":
+        for label in {"2", "5", "9", "16", "21", "24"}:
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+        for label in {"25", "26"}:
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+
+    if source.path.name == "2022년도_제2차_총회_목사고시_헌법_문제_20220621_.pdf":
+        q20 = by_label.get("20")
+        if q20:
+            repair_essay_prompt(q20)
+        for label in map(str, range(21, 31)):
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+
+    if source.path.name == "2022년도_제2차_총회_목사고시_성경_문제_20220621_.pdf":
+        for label in {"49", "50"}:
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+
+    if source.path.name == "2023년_제1차_총회_목사고시_헌법.pdf":
+        q11 = by_label.get("11")
+        if q11:
+            repair_blank_prompt(q11)
+        for label in map(str, range(12, 22)):
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+
+    if source.path.name == "2023년도_제2차_총회_목사고시_성경_문제_20230620_.pdf":
+        q10 = by_label.get("10")
+        if q10:
+            repair_essay_prompt(q10)
+
+    if source.path.name == "2024년도_제1차_총회_목사고시_헌법_문제.pdf":
+        for label in {"1", "2"}:
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+        for label in {"18", "19", "20"}:
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+
+    if source.path.name == "2024년도_제2차_총회_목사고시_헌법_문제.pdf":
+        for label in map(str, range(4, 14)):
+            question = by_label.get(label)
+            if question:
+                question["type"] = "ox"
+                repair_current_prompt(question)
+        for label in {"14", "15", "19"}:
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question, keep_body=label == "14")
+
+    if source.path.name == "2025년도_제1차_총회_목사고시_헌법_문제_기출_.pdf":
+        q25 = by_label.get("25")
+        if q25:
+            repair_essay_prompt(q25)
 
     if source.path.name == "2023년도_제2차_총회_목사고시_헌법_문제_20230620_.pdf":
         choice_instruction = "※ 한 가지를 고르는 문제입니다. ( ) 안에 정답의 번호를 쓰십시오."
