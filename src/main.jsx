@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BookOpen,
@@ -500,6 +500,19 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource }) 
 }
 
 function SourceModal({ document, onClose }) {
+  useEffect(() => {
+    if (!document) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [document, onClose]);
+
   if (!document) return null;
 
   const url = sourceUrl(document);
@@ -508,13 +521,20 @@ function SourceModal({ document, onClose }) {
   const canPreview = extension === "pdf" || extension === "hwp";
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <section
         className="source-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="source-modal-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="source-modal-header">
           <div>
