@@ -35,6 +35,7 @@ const initialFilters = {
 
 const ANSWER_STORAGE_KEY = "prok-study-answers-v2";
 const LEGACY_ANSWER_STORAGE_KEY = "prok-study-answers";
+const USER_ID_STORAGE_KEY = "prok-study-user-id";
 
 function questionAnswerKey(question) {
   const label = question.displayLabel || question.numberLabel || question.number || "";
@@ -50,34 +51,123 @@ function getQuestionAnswer(answers, question) {
   return answers[questionAnswerKey(question)] || answers[question.id] || {};
 }
 
-function useStoredAnswers() {
-  const [answers, setAnswers] = useState(() => {
-    try {
-      const current = JSON.parse(localStorage.getItem(ANSWER_STORAGE_KEY) || "{}");
-      const legacy = JSON.parse(localStorage.getItem(LEGACY_ANSWER_STORAGE_KEY) || "{}");
-      return { ...legacy, ...current };
-    } catch {
-      return {};
-    }
+function readLocalAnswers() {
+  try {
+    const current = JSON.parse(localStorage.getItem(ANSWER_STORAGE_KEY) || "{}");
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_ANSWER_STORAGE_KEY) || "{}");
+    return { ...legacy, ...current };
+  } catch {
+    return {};
+  }
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "content-type": "application/json",
+      ...(options.headers || {}),
+    },
   });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || "server request failed");
+  }
+  return body;
+}
+
+function useStoredAnswers() {
+  const [userId, setUserId] = useState(() => localStorage.getItem(USER_ID_STORAGE_KEY) || "");
+  const [answers, setAnswers] = useState({});
+  const [status, setStatus] = useState(userId ? "loading" : "signed-out");
+  const [error, setError] = useState("");
+  const [loadVersion, setLoadVersion] = useState(0);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+
+    let cancelled = false;
+    const load = async () => {
+      setStatus("loading");
+      setError("");
+
+      try {
+        const serverState = await requestJson(`/api/progress/${encodeURIComponent(userId)}`);
+        const localAnswers = readLocalAnswers();
+        const hasLocalAnswers = Object.keys(localAnswers).length > 0;
+        const mergedAnswers = { ...localAnswers, ...(serverState.answers || {}) };
+
+        if (hasLocalAnswers) {
+          await requestJson(`/api/progress/${encodeURIComponent(userId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ answers: mergedAnswers }),
+          });
+          localStorage.removeItem(ANSWER_STORAGE_KEY);
+          localStorage.removeItem(LEGACY_ANSWER_STORAGE_KEY);
+        }
+
+        if (!cancelled) {
+          setAnswers(mergedAnswers);
+          setStatus("ready");
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError("저장 서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.");
+          setStatus("error");
+        }
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, loadVersion]);
+
+  const login = (rawUserId) => {
+    const nextUserId = rawUserId.trim();
+    if (!nextUserId || nextUserId.length > 64 || /[\u0000-\u001f/\\]/u.test(nextUserId)) {
+      setError("학습 ID는 1-64자이고 / 또는 \\ 문자는 사용할 수 없습니다.");
+      setStatus("signed-out");
+      return;
+    }
+
+    localStorage.setItem(USER_ID_STORAGE_KEY, nextUserId);
+    setStatus("loading");
+    setUserId(nextUserId);
+    setLoadVersion((version) => version + 1);
+  };
+
+  const logout = () => {
+    localStorage.removeItem(USER_ID_STORAGE_KEY);
+    setUserId("");
+    setAnswers({});
+    setError("");
+    setStatus("signed-out");
+  };
 
   const updateAnswer = (question, patch) => {
     setAnswers((current) => {
       const stableKey = questionAnswerKey(question);
       const existing = current[stableKey] || current[question.id] || {};
-      const next = { ...current, [stableKey]: { ...existing, ...patch } };
-      localStorage.setItem(ANSWER_STORAGE_KEY, JSON.stringify(next));
+      const nextAnswer = { ...existing, ...patch };
+      const next = { ...current, [stableKey]: nextAnswer };
+      requestJson(`/api/progress/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ key: stableKey, answer: nextAnswer }),
+      }).catch(() => setError("진행상황 저장에 실패했습니다."));
       return next;
     });
   };
 
   const reset = () => {
-    localStorage.removeItem(ANSWER_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_ANSWER_STORAGE_KEY);
     setAnswers({});
+    requestJson(`/api/progress/${encodeURIComponent(userId)}`, { method: "DELETE" }).catch(() =>
+      setError("진행상황 초기화에 실패했습니다."),
+    );
   };
 
-  return [answers, updateAnswer, reset];
+  return { answers, updateAnswer, resetAnswers: reset, userId, login, logout, answerStatus: status, answerError: error };
 }
 
 function normalizeQuestionText(question) {
@@ -118,7 +208,16 @@ function App() {
   const [sourceDocument, setSourceDocument] = useState(null);
   const [practiceSeed, setPracticeSeed] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [answers, updateAnswer, resetAnswers] = useStoredAnswers();
+  const {
+    answers,
+    updateAnswer,
+    resetAnswers,
+    userId,
+    login,
+    logout,
+    answerStatus,
+    answerError,
+  } = useStoredAnswers();
 
   const years = useMemo(
     () => [...new Set(data.questions.map((q) => q.year).filter(Boolean))].sort((a, b) => b - a),
@@ -263,6 +362,17 @@ function App() {
     }
   };
 
+  if (answerStatus !== "ready") {
+    return (
+      <LoginScreen
+        error={answerError}
+        initialUserId={userId}
+        loading={answerStatus === "loading"}
+        onLogin={login}
+      />
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -275,10 +385,17 @@ function App() {
             <p>2010-2026년 공개 기출문제를 연도와 과목별로 풀어보는 로컬 학습 사이트</p>
           </div>
         </div>
-        <button className="ghost-button" onClick={refreshPracticeSet}>
-          <Shuffle size={17} /> 새 문제 세트
-        </button>
+        <div className="topbar-actions">
+          <div className="user-badge">
+            <span>{userId}</span>
+            <button type="button" onClick={logout}>ID 변경</button>
+          </div>
+          <button className="ghost-button" onClick={refreshPracticeSet}>
+            <Shuffle size={17} /> 새 문제 세트
+          </button>
+        </div>
       </header>
+      {answerError && <div className="sync-alert">{answerError}</div>}
 
       <section className="overview">
         <div className="summary">
@@ -439,6 +556,47 @@ function Metric({ label, value, icon }) {
       <strong>{value}</strong>
       <p>{label}</p>
     </div>
+  );
+}
+
+function LoginScreen({ error, initialUserId, loading, onLogin }) {
+  const [value, setValue] = useState(initialUserId);
+
+  useEffect(() => {
+    setValue(initialUserId);
+  }, [initialUserId]);
+
+  const submit = (event) => {
+    event.preventDefault();
+    onLogin(value);
+  };
+
+  return (
+    <main className="login-shell">
+      <form className="login-card" onSubmit={submit}>
+        <span className="brand-mark">
+          <BookOpen size={22} />
+        </span>
+        <h1>목사고시 기출문제</h1>
+        <p>학습 ID를 입력하면 완료, 복습, 풀이 메모가 서버에 저장됩니다.</p>
+        <label className="login-field">
+          <span>학습 ID</span>
+          <input
+            autoFocus
+            disabled={loading}
+            maxLength={64}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="예: my-study"
+            value={value}
+          />
+        </label>
+        {error && <p className="login-error">{error}</p>}
+        <button className="primary-button login-button" disabled={loading} type="submit">
+          {loading ? "불러오는 중" : "시작하기"}
+        </button>
+        <small>비밀번호 없는 개인 학습용 ID입니다. 같은 ID를 입력하면 같은 기록을 불러옵니다.</small>
+      </form>
+    </main>
   );
 }
 

@@ -3,7 +3,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}",
+    "start": "node server/index.mjs",
+    "dev:server": "npm run build && DATA_DIR=.data HOST=127.0.0.1 PORT=4173 node server/index.mjs",
     "extract": "python3 scripts/extract_questions.py",
     "generate:hwp": "node scripts/generate_hwp_html.mjs"
   },
@@ -12,6 +13,7 @@
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "sql.js": "^1.14.1",
     "typescript": "latest",
     "vite": "^5.4.14"
   },
