@@ -674,6 +674,13 @@ def normalize_manual_text(text: str) -> str:
         "무엇입 니까": "무엇입니까",
         "무 엇입니까": "무엇입니까",
         "무엇 입니까": "무엇입니까",
+        "구 체적으로": "구체적으로",
+        "서 술": "서술",
+        "산 다": "산다",
+        "책망 을": "책망을",
+        "성 서적": "성서적",
+        "노 회": "노회",
+        "교 회": "교회",
     }
     for before, after in replacements.items():
         text = text.replace(before, after)
@@ -789,6 +796,22 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
     if source.path.name == "2011년도_제2차_총회_목사고시__성경.pdf":
         for question in questions:
             if str(question.get("numberLabel")) in {"6", "13"}:
+                repair_choice_from_options(question)
+            else:
+                repair_essay_prompt(question)
+
+    if source.path.name in {
+        "2012년도_제1차_총회_목사고시___교단헌법.pdf",
+        "2012년도_제1차_총회_목사고시___성경.pdf",
+        "2012년도_제2차_총회_목사고시___교단헌법.pdf",
+    }:
+        for question in questions:
+            repair_essay_prompt(question)
+
+    if source.path.name == "2012년도_제2차_총회_목사고시___성경.pdf":
+        for question in questions:
+            label = str(question.get("numberLabel"))
+            if label in {str(number) for number in range(1, 11)}:
                 repair_choice_from_options(question)
             else:
                 repair_essay_prompt(question)
