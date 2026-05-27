@@ -675,7 +675,7 @@ def apply_display_labels(questions: list[dict]) -> None:
 
 STRUCTURED_ITEM_RE = re.compile(r"(?<!^)\s+((?:[2-9]|1[0-9]|20)\))")
 STRUCTURED_SPLIT_PATTERNS = [
-    re.compile(r"\s+1\)"),
+    re.compile(r"\s+1\)\s+"),
     re.compile(r"\s+(?=①(?!\s*\)))"),
     re.compile(r"\s+(?=■\s*①)"),
     re.compile(r"\s+(?=▶)"),
@@ -953,6 +953,40 @@ def insert_missing_questions_after(questions: list[dict], after_label: str, entr
         insert_at += 1
 
 
+def set_prompt(question: dict, title: str, body: str | None = None, qtype: str | None = None) -> None:
+    body = title if body is None else body
+    question["groupTitle"] = title
+    question["title"] = title
+    question["body"] = body
+    question["text"] = f"{title}\n{body}".strip() if body and body != title else title
+    if qtype:
+        question["type"] = qtype
+    if qtype != "choice":
+        question["options"] = []
+
+
+def apply_bible_parent_titles(questions: list[dict], parent_titles: dict[str, str], type_by_group: dict[str, str]) -> None:
+    for question in questions:
+        label = str(question.get("numberLabel", ""))
+        group = label.split("-", 1)[0]
+        if group not in parent_titles:
+            continue
+        apply_parent_prompt(question, parent_titles[group])
+        question["type"] = type_by_group.get(group, "essay")
+        question["options"] = []
+
+
+def override_body(question: dict | None, body: str, qtype: str | None = None) -> None:
+    if not question:
+        return
+    question["body"] = body
+    question["text"] = f"{question.get('title', '')}\n{body}".strip()
+    if qtype:
+        question["type"] = qtype
+    if qtype != "choice":
+        question["options"] = []
+
+
 def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
     by_label = {str(question.get("numberLabel")): question for question in questions}
 
@@ -1124,11 +1158,92 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
         q19 = by_label.get("19")
         if q19:
             repair_essay_prompt(q19)
+        fixed_prompts = {
+            "17": "신도가 자의로 교회 개척을 노회에 청원할 수 있는가? 그 이유는 무엇인가? (정치치리총람집 1.교회 1)-[1])",
+            "18": "전도목사와 담임목사는 언제부터 당회장이 되는가? (정치치리총람집 2. 목사 1)-(1)-[6])",
+            "19": "“재판이 종결될 때까지 당회장권을 정지한다.”는 노회의 결의에 묶여 있는 담임목사가 설교할 수 있는가? 그 이유는 무엇인가? (정치치리총람집 2.목사 1)-(2)-[3])",
+        }
+        for label, prompt in fixed_prompts.items():
+            question = by_label.get(label)
+            if question:
+                set_prompt(question, prompt, qtype="essay")
 
     if source.path.name == "2015년도_제2차_총회_목사고시___교단헌법.pdf":
         q17 = by_label.get("17")
         if q17:
             repair_essay_prompt(q17, keep_body=True)
+        q2 = by_label.get("2")
+        if q2:
+            set_prompt(
+                q2,
+                "다음 ( ) 안에 들어 갈 말을 쓰시오. (5점)",
+                "( ① )의 지상 목적은 인류의 구원을 위한 복음을 선포하고 하나님의 자녀를 보호하며 양육하고 성도의 교제를 맺으며 거룩한 ( ② )를 드리고 진리를 보전하는 동시에 사회 정의를 구현함으로써 하늘나라를 이 ( ③ ) 에 이루는데 있다.",
+                "blank",
+            )
+        q23_1 = by_label.get("23-1")
+        if q23_1:
+            set_prompt(
+                q23_1,
+                "다음의 두 문제 중 한 가지를 골라 서술하시오. (8점)",
+                "1) 본 교단의 해 노회에서 목사직을 면직당한 자가 다시 시무직 복권까지의 기간과 이유에 대해여 설명하시오. (정치 제4장 제28조, 권징조례 제10장 제96조)",
+                "essay",
+            )
+        q23_2 = by_label.get("23-2")
+        if q23_2:
+            set_prompt(
+                q23_2,
+                "다음의 두 문제 중 한 가지를 골라 서술하시오. (8점)",
+                "2) 본 교단 ‘A 교회’의 당회가 시무경력 13년이 된 ‘홍길동 장로’(만63세)를 원로 장로로 추대하려고 한다. 그렇다면 ‘A교회’의 ‘홍길도 장로’는 원로 장로로 추대될 수 있는가? 될 수 있다면 그 이유에 대해 서술하시고, 될 수 없다면 그 이유에 대해 서술하시오. (정치 제2장 제12조, 제5장 제35조, 치리총람 1교회.[7])",
+                "essay",
+            )
+
+    if source.path.name == "2014년도_제1차_총회_목사고시___성경.pdf":
+        parent_titles = {
+            "1": "1. 다음을 간략하게 설명하시오. (각 5점)",
+            "2": "2. 다음을 맞는 것끼리 연결해 보시오. (각 4점)",
+            "4": "4. 다음 말씀의 괄호를 채우고 어느 책에 있는 말씀인지 쓰시오. (각 4점)",
+            "5": "5. 다음 주제에 대한 견해를 말해 보시오. (각 17점)",
+        }
+        apply_bible_parent_titles(questions, parent_titles, {"1": "essay", "2": "essay", "4": "blank", "5": "essay"})
+        override_body(by_label.get("2-1"), "1) 입술이 부정한 사람    아모스\n뽕나무 재배하는 자    예레미야\n나는 아이라           이사야")
+        override_body(by_label.get("2-2"), "2) 실천적 믿음       골로새서\n멜기세덱의 반차   야고보서\n만물의 으뜸       히브리서")
+        override_body(by_label.get("2-3"), "3) “너희는 이 모든 일의 증인이라.”             요한복음\n“내 양을 치라.”                             마태복음\n“분부한 모든 것을 가르쳐 지키게 하라.”     누가복음")
+        override_body(by_label.get("5-1"), "1) 사도행전 1장 8절과 “하나님의 선교”")
+        override_body(by_label.get("5-2"), "2) 창세기 1장의 창조 이야기와 “창조세계의 보존”")
+
+    if source.path.name == "2014년도_제2차_총회_목사고시___성경.pdf":
+        parent_titles = {
+            "1": "1. 다음을 간략하게 설명하시오. (각 3점)",
+            "2": "2. 다음을 관계있는 것끼리 연결해 보시오. (각 3점)",
+            "3": "3. 다음 말씀의 괄호를 채우고 어느 책에 있는 말씀인지 쓰시오. (각 3점)",
+            "4": "4. 다음 주제 중 2가지를 택하여 논하여 보시오. (각 20점)",
+        }
+        apply_bible_parent_titles(questions, parent_titles, {"1": "essay", "2": "essay", "3": "blank", "4": "essay"})
+        override_body(by_label.get("2-1"), "1) 마른 뼈들이 가득한 골짜기    요나\n벌레와 박넝쿨                 말라기\n용광로 불 같은 날             에스겔")
+        override_body(by_label.get("2-2"), "2) 자기를 비워 종의 형체를    골로새서\n만물보다 먼저 계시고       빌립보서\n하늘의 큰 대제사장         히브리서")
+        override_body(by_label.get("2-3"), "3) “아브라함과 다윗의 자손 예수 그리스도의 계보”    누가복음\n“태초에 말씀이 계시니라”                         마태복음\n“데오빌로 각하에게 차례대로…”                    요한복음\n“하나님의 아들 예수 그리스도의 복음”             마가복음")
+        override_body(by_label.get("4-1"), "1) 레위기 25장의 “안식년과 희년”과 관련하여 “창조세계의 보존”")
+        override_body(by_label.get("4-2"), "2) 로마서에서 바울이 말하는 “이방인과 이스라엘의 구원”")
+
+    if source.path.name == "2015년도_제1차_총회_목사고시___성경.pdf":
+        parent_titles = {
+            "1": "1. 다음 물음에 대해 간략하게 설명하시오. (각 문항 6점)",
+            "2": "2. 다음을 관련된 것끼리 연결해 보시오. (각 문항 5점)",
+            "3": "3. 다음 성구의 빈 괄호를 채우고, 각각 어느 책에 나오는지 쓰시오. (각 문항 3점)",
+        }
+        apply_bible_parent_titles(questions, parent_titles, {"1": "essay", "2": "essay", "3": "blank"})
+        override_body(by_label.get("2-1"), "1) 제비      유월절\n양        수장절\n곡식      부림절")
+        override_body(by_label.get("2-2"), "2) 유대인의 왕으로 나신 이    마가\n구유에 뉘인 아기          마태\n복음의 시작               누가")
+
+    if source.path.name == "2015년도_제2차_총회_목사고시___성경.pdf":
+        parent_titles = {
+            "1": "1. 다음 성구의 괄호를 채우고, 어느 책에 나오는 말씀인지 쓰시오. (10문항×4점)",
+            "2": "2. 다음 관련 있는 것끼리 연결하시오. (2문항×5점)",
+            "3": "3. 다음 물음에 간략하게 답하시오. (10문항×5점)",
+        }
+        apply_bible_parent_titles(questions, parent_titles, {"1": "blank", "2": "essay", "3": "essay"})
+        override_body(by_label.get("2-1"), "1) 입술이 부정한 자    예레미야\n음란한 아내          이사야\n어린아이             호세아")
+        override_body(by_label.get("2-2"), "2) 가르쳐 지키게 하라      누가복음\n이 모든 일의 증인이라    요한복음\n내 양떼를 먹여라        마태복음")
 
     if source.path.name == "2016년_제1차_목사고시_문제___성경.hwp":
         parent_titles = {
