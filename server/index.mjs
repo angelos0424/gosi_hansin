@@ -74,6 +74,16 @@ function json(res, status, body) {
   res.end(payload);
 }
 
+function serverErrorMessage(error) {
+  if (["EACCES", "EPERM", "EROFS"].includes(error?.code)) {
+    return "DATA_DIR 경로에 쓸 수 없습니다. Coolify Volume Mount의 Destination Path와 권한을 확인하세요.";
+  }
+  if (error?.message?.includes("readonly")) {
+    return "SQLite 파일이 읽기 전용입니다. Coolify Volume Mount 권한을 확인하세요.";
+  }
+  return "server error";
+}
+
 function validateUserId(rawUserId) {
   const userId = decodeURIComponent(rawUserId || "").trim();
   if (!userId || userId.length > 64 || /[\u0000-\u001f/\\]/u.test(userId)) {
@@ -217,7 +227,7 @@ const server = http.createServer(async (req, res) => {
     return await serveStatic(req, res);
   } catch (error) {
     console.error(error);
-    return json(res, 500, { error: "server error" });
+    return json(res, 500, { error: serverErrorMessage(error), code: error?.code || "SERVER_ERROR" });
   }
 });
 
