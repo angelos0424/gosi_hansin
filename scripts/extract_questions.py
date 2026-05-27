@@ -934,6 +934,23 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
                 question["options"] = []
             else:
                 repair_essay_prompt(question)
+        q5 = by_label.get("5")
+        if q5:
+            title = "장로의 선출과 임기에 대하여 괄호를 채워 쓰시오. (정치 제5장 제31조)"
+            body = "\n".join(
+                [
+                    "1) 장로는 ( )가 결의한 수와 방법대로 ( )에서 투표수 3분의 2 이상의 찬성으로 선출된다.",
+                    "2) 미조직 교회에서 당회를 조직하고자 하면 입교인 ( )인 이상이 있을 때 ( )의 허락을 얻어 장로를 선출한다.",
+                    "3) 장로의 증원은 입교인 ( )인에 1인 비례로 증원할 수 있다. 장로의 임기는 ( ) 기간으로 한다.",
+                    "4) 사임, 사직, 면직, 전적 등의 사유로 무임으로 있는 자는 다시 선임되고 ( )하여 시무할 수 있다. 전입자는 ( )년 이상 신도로서의 의무를 모범적으로 이행한 자 라야 선출될 수 있다.",
+                ]
+            )
+            q5["groupTitle"] = title
+            q5["title"] = title
+            q5["body"] = body
+            q5["text"] = f"{title}\n{body}"
+            q5["type"] = "blank"
+            q5["options"] = []
 
     if source.path.name == "2013년도_제2차_총회_목사고시___성경.pdf":
         for question in questions:
@@ -944,6 +961,38 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
                 repair_essay_prompt(question)
             else:
                 repair_essay_prompt(question, keep_body=bool(question.get("body") and question.get("body") != question.get("title")))
+        q22_24 = by_label.get("22-24")
+        if q22_24:
+            title = "다음을 서로 맞는 것들끼리 연결하시오. (6점)"
+            body = "\n".join(
+                [
+                    "실천적 믿음        유다서",
+                    "거짓 교사 경계    요한서신",
+                    "하나님은 사랑     야고보서",
+                ]
+            )
+            q22_24["groupTitle"] = title
+            q22_24["title"] = title
+            q22_24["body"] = body
+            q22_24["text"] = f"{title}\n{body}"
+            q22_24["type"] = "essay"
+            q22_24["options"] = []
+        q28_30 = by_label.get("28-30")
+        if q28_30:
+            title = "다음은 예수께서 십자가상에서 하신 말씀이다, 각각 어느 책에 기록된 말씀입니까?"
+            body = "\n".join(
+                [
+                    "“아버지 내 영혼을 아버지의 손에 부탁하나이다.”( )",
+                    "“여자여 보소서 아들이니이다. 보라 네 어머니라.”( )",
+                    "“다 이루었다.”( )",
+                ]
+            )
+            q28_30["groupTitle"] = title
+            q28_30["title"] = title
+            q28_30["body"] = body
+            q28_30["text"] = f"{title}\n{body}"
+            q28_30["type"] = "blank"
+            q28_30["options"] = []
 
     if source.path.name == "2015년도_제1차_총회_목사고시___교단헌법.pdf":
         q19 = by_label.get("19")

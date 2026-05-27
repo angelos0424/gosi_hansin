@@ -465,6 +465,7 @@ p {
   margin: 0 0 16px 0;
   color: #253341;
   line-height: 1.72;
+  white-space: pre-wrap;
 }
 
 .option-list {
