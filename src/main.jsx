@@ -63,9 +63,18 @@ function normalizeQuestionText(question) {
   return base.slice(0, marker).trim();
 }
 
+function documentDisplayName(fileName) {
+  return fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_()]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function App() {
   const [filters, setFilters] = useState(initialFilters);
   const [activeId, setActiveId] = useState(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState(null);
   const [practiceSeed, setPracticeSeed] = useState(0);
   const [answers, updateAnswer, resetAnswers] = useStoredAnswers();
 
@@ -79,9 +88,32 @@ function App() {
     [],
   );
 
+  const selectedDocument = selectedDocumentId ? documentsById[selectedDocumentId] : null;
+
+  const documentRows = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+
+    return data.documents.filter((doc) => {
+      if (filters.subject !== "전체" && doc.subject !== filters.subject) return false;
+      if (filters.year !== "전체" && String(doc.year) !== String(filters.year)) return false;
+      if (filters.session !== "전체" && doc.session !== filters.session) return false;
+      if (filters.type === "전체" && !query) return true;
+
+      return data.questions.some((q) => {
+        if (q.documentId !== doc.id) return false;
+        if (filters.type !== "전체" && q.type !== filters.type) return false;
+        if (!query) return true;
+        return `${q.groupTitle || ""} ${q.title} ${q.body} ${q.text} ${q.sourceTitle} ${q.fileName} ${(q.displayLabel || q.numberLabel || q.number || "")}`
+          .toLowerCase()
+          .includes(query);
+      });
+    });
+  }, [filters]);
+
   const filteredQuestions = useMemo(() => {
     const query = filters.query.trim().toLowerCase();
     return data.questions.filter((q) => {
+      if (selectedDocumentId && q.documentId !== selectedDocumentId) return false;
       if (filters.subject !== "전체" && q.subject !== filters.subject) return false;
       if (filters.year !== "전체" && String(q.year) !== String(filters.year)) return false;
       if (filters.session !== "전체" && q.session !== filters.session) return false;
@@ -89,7 +121,7 @@ function App() {
       if (!query) return true;
       return `${q.groupTitle || ""} ${q.title} ${q.body} ${q.text} ${q.sourceTitle} ${q.fileName} ${(q.displayLabel || q.numberLabel || q.number || "")}`.toLowerCase().includes(query);
     });
-  }, [filters]);
+  }, [filters, selectedDocumentId]);
 
   const makeSeededRandom = (seed) => {
     let state = seed;
@@ -115,6 +147,10 @@ function App() {
   };
 
   const practiceQuestions = useMemo(() => {
+    if (selectedDocumentId) {
+      return filteredQuestions;
+    }
+
     const constitutionQuestions = filteredQuestions.filter((q) => q.subject === "교단헌법");
     const bibleQuestions = filteredQuestions.filter((q) => q.subject === "성경");
     const target = {
@@ -136,7 +172,7 @@ function App() {
     const leftovers = filteredQuestions.filter((q) => !selectedIds.has(q.id));
     const extra = takeRandom(leftovers, 30 - picked.length, (seed * 9301 + 49297) % 233280);
     return [...picked, ...extra];
-  }, [filteredQuestions, practiceSeed]);
+  }, [filteredQuestions, practiceSeed, selectedDocumentId]);
 
   const activeQuestion = useMemo(() => {
     return practiceQuestions.find((q) => q.id === activeId) || practiceQuestions[0] || filteredQuestions[0];
@@ -155,12 +191,27 @@ function App() {
 
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
+    setSelectedDocumentId(null);
     setActiveId(null);
   };
 
   const refreshPracticeSet = () => {
+    setSelectedDocumentId(null);
     setActiveId(null);
     setPracticeSeed((n) => n + 1);
+  };
+
+  const openDocumentQuestions = (doc) => {
+    setSelectedDocumentId(doc.id);
+    setFilters((current) => ({
+      ...current,
+      subject: doc.subject || "전체",
+      year: doc.year || "전체",
+      session: doc.session || "전체",
+      type: "전체",
+      query: "",
+    }));
+    setActiveId(null);
   };
 
   return (
@@ -239,13 +290,21 @@ function App() {
           </div>
 
           <div className="source-list">
-            <h3>문서 목록</h3>
-            {data.documents.slice(0, 12).map((doc) => (
-              <div className="source-row" key={doc.id}>
+            <h3>문서 목록 ({documentRows.length})</h3>
+            {documentRows.map((doc) => (
+              <button
+                className={`source-row ${selectedDocumentId === doc.id ? "active" : ""}`}
+                key={doc.id}
+                type="button"
+                onClick={() => openDocumentQuestions(doc)}
+              >
                 <span>{doc.year || "미상"}</span>
-                <p>{doc.subject}</p>
+                <p title={doc.fileName}>
+                  <b>{doc.session} · {doc.subject}</b>
+                  <small>{documentDisplayName(doc.fileName)}</small>
+                </p>
                 <strong>{doc.questionCount}</strong>
-              </div>
+              </button>
             ))}
           </div>
         </aside>
@@ -253,8 +312,12 @@ function App() {
         <section className="practice-panel">
           <div className="panel-header">
             <div>
-              <span className="eyeless-label">현재 세트</span>
-              <h2>{filteredQuestions.length.toLocaleString()}개 중 {practiceQuestions.length}개 풀이</h2>
+              <span className="eyeless-label">{selectedDocumentId ? "선택 문서" : "현재 세트"}</span>
+              <h2>
+                {selectedDocument
+                  ? `${selectedDocument.year || "미상"} ${selectedDocument.session} ${selectedDocument.subject} ${practiceQuestions.length}개`
+                  : `${filteredQuestions.length.toLocaleString()}개 중 ${practiceQuestions.length}개 풀이`}
+              </h2>
             </div>
             <button className="ghost-button small" onClick={resetAnswers}>
               <RotateCcw size={16} /> 기록 초기화

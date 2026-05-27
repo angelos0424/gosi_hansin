@@ -274,13 +274,24 @@ p {
   margin-bottom: 12px;
 }
 
+.source-list {
+  max-height: calc(100vh - 330px);
+  overflow-y: auto;
+}
+
 .source-row {
   display: grid;
-  grid-template-columns: 48px 1fr 36px;
+  grid-template-columns: 48px minmax(0, 1fr) 36px;
   gap: 10px;
   align-items: center;
-  padding: 8px 0;
+  width: 100%;
+  padding: 9px 0;
+  border: 0;
   border-top: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 
 .source-row span,
@@ -289,14 +300,46 @@ p {
 }
 
 .source-row p {
+  display: grid;
+  gap: 2px;
   min-width: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
+.source-row b,
+.source-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-row b {
+  color: #40505a;
+  font-size: 13px;
+}
+
+.source-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .source-row strong {
   justify-self: end;
   color: var(--blue);
+}
+
+.source-row:hover,
+.source-row.active {
+  background: #eef7f5;
+}
+
+.source-row.active span,
+.source-row.active b,
+.source-row.active small,
+.source-row.active strong {
+  color: var(--teal-dark);
+  font-weight: 800;
 }
 
 .practice-panel {
