@@ -1384,12 +1384,53 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
             question = by_label.get(label)
             if question:
                 repair_essay_prompt(question)
+        set_prompt(
+            by_label.get("22"),
+            "22. 아래 당회장에 대해 설명하시오. (5점)",
+            "(1) 당회장:\n(2) 대리 당회장:\n(3) 임시 당회장\n(4) 준 당회장",
+            "essay",
+        )
 
     if source.path.name == "2019년도_제2차_총회_목사고시_헌법문제.pdf":
         q4 = by_label.get("4")
         if q4:
             q4["type"] = "choice"
             repair_choice_from_options(q4)
+
+    if source.path.name == "2019년도_제1차_총회_목사고시_성경_문제.pdf":
+        parent_title = "4. 다음 물음에 대한 정답을 적으시오? (50점: 5문항 선택X10점)"
+        for label in {f"4-{number}" for number in range(1, 6)}:
+            question = by_label.get(label)
+            if question:
+                apply_parent_prompt(question, parent_title)
+                question["type"] = "essay"
+                question["options"] = []
+        insert_missing_questions_after(
+            questions,
+            "4-5",
+            [
+                make_manual_question("4-6", parent_title, "6) 사도행전에서 묘사된 바울과 서신서에 묘사된 바울과의 차이점과 그 의미는 무엇인가?"),
+                make_manual_question("4-7", parent_title, "7) 성령의 은사와 성령의 열매는 각각 무엇인가?"),
+                make_manual_question("4-8", parent_title, "8) 요한계시록에 대한 역사적인 해석은 어떻게 해야 하는가?"),
+            ],
+        )
+
+    if source.path.name == "2019년도_제2차_총회_목사고시_성경_문제.pdf":
+        parent_title = "1. 4문제만 골라 적으시오? (40점: 4문항X10점)"
+        for label in {f"1-{number}" for number in range(1, 5)}:
+            question = by_label.get(label)
+            if question:
+                apply_parent_prompt(question, parent_title)
+                question["type"] = "essay"
+                question["options"] = []
+        insert_missing_questions_after(
+            questions,
+            "1-4",
+            [
+                make_manual_question("1-5", parent_title, "5) 로마서 8장에서 말하는 성령이 주는 자유는?"),
+                make_manual_question("1-6", parent_title, "6) 야고보서가 주장하는 산 믿음은 무엇인가?"),
+            ],
+        )
 
     if source.path.name == "2020년도_제1차_총회_목사고시_문제_헌법.pdf":
         for label in {"1", "2", "3", "4", "18"}:
@@ -1398,11 +1439,60 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
                 repair_essay_prompt(question)
 
     if source.path.name == "2020년도_제1차_총회_목사고시_성경_문제.pdf":
+        parent_title = "1. 다음 중 3문항만 골라 쓰시오(30점: 3문항X10점)"
+        bodies = {
+            "1-1": "1) 왜 성경은 사람이 바벨탑을 쌓은 것을 죄로 간주하는가?",
+            "1-2": "2) 모세가 십계명을 받은 후 선포한 세칙(계약법전)의 기본 정신은 무엇인가?",
+            "1-3": "3) 예수께서 선포한 “하나님의 나라”는 무엇을 뜻하는가?",
+        }
+        for label, body in bodies.items():
+            question = by_label.get(label)
+            if question:
+                set_prompt(question, parent_title, body, "essay")
+        insert_missing_questions_after(
+            questions,
+            "1-3",
+            [
+                make_manual_question("1-4", parent_title, "4) 바울 서신의 특징은 무엇인가?"),
+                make_manual_question("1-5", parent_title, "5) 로마서의 주제는 무엇인가?"),
+            ],
+        )
         for label in {f"2-{number}" for number in range(1, 21)}:
             question = by_label.get(label)
             if question:
                 question["type"] = "choice"
                 repair_choice_from_options(question)
+        parent_title = "3. 다음 성구가 언급된 성경 구절을 보기에서 찾아 번호를 적으시오(30점: 10문항X3점)"
+        common_options = "\n".join(
+            [
+                "* 보기 *",
+                "(1) 빌2:6-7 (2) 벧전1:17 (3) 약1:15 (4) 호6:1 (5) 고전12:13 (6) 롬6:23",
+                "(7) 겔37:5-6 (8) 레11:45 (9) 잠1:17 (10) 막8:35 (11) 시32:1 (12) 롬10:10",
+                "(13) 사1:18 (14) 합2:4 (15) 습1:5 (16) 욜2:32",
+            ]
+        )
+        for label in {f"3-{number}" for number in range(21, 31)}:
+            question = by_label.get(label)
+            if question:
+                verse = re.split(r"(?:\* 보기 \*|-보기-)", normalize_manual_text(question.get("title", "")), maxsplit=1)[0].strip()
+                set_prompt(question, parent_title, f"{verse}\n\n{common_options}", "blank")
+
+    if source.path.name == "2022년도_제2차_총회_목사고시_성경_문제_20220621_.pdf":
+        parent_title = "※ 다음 성구가 언급된 성경의 책과 장, 절을 보기에서 찾아 쓰시오."
+        common_options = "\n".join(
+            [
+                "-보기-",
+                "이사야40:8, 창세기12:2, 예레미야 29:11, 룻기1:16, 욥기23:10, 호세아 6:1,",
+                "요한복음1:29, 요엘 2:28, 잠언1:7, 마태복음1:23, 말라기4:2, 마가복음1:15,",
+                "누가복음 5:32, 사도행전1:8, 로마서10:10, 고린도후서5:17, 야고보서1:15,",
+                "요한삼서1:2, 디모데후서3:16",
+            ]
+        )
+        for label in {str(number) for number in range(30, 49)}:
+            question = by_label.get(label)
+            if question:
+                verse = re.split(r"(?:\* 보기 \*|-보기-)", normalize_manual_text(question.get("title", "")), maxsplit=1)[0].strip()
+                set_prompt(question, parent_title, f"{verse}\n\n{common_options}", "essay")
 
     if source.path.name == "2021년도_제1차_총회_목사고시_문제_성경.pdf":
         for label in {"1", "2"}:
