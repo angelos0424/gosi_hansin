@@ -1162,11 +1162,12 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
             "17": "신도가 자의로 교회 개척을 노회에 청원할 수 있는가? 그 이유는 무엇인가? (정치치리총람집 1.교회 1)-[1])",
             "18": "전도목사와 담임목사는 언제부터 당회장이 되는가? (정치치리총람집 2. 목사 1)-(1)-[6])",
             "19": "“재판이 종결될 때까지 당회장권을 정지한다.”는 노회의 결의에 묶여 있는 담임목사가 설교할 수 있는가? 그 이유는 무엇인가? (정치치리총람집 2.목사 1)-(2)-[3])",
+            "20": "“인준투표”와 “선임투표”의 차이를 설명하시오. (정치치리총람집 2.목사 3)-[10])",
         }
         for label, prompt in fixed_prompts.items():
             question = by_label.get(label)
             if question:
-                set_prompt(question, prompt, qtype="essay")
+                set_prompt(question, "정치치리총람집 관련 문제입니다. (각 3점)", prompt, "essay")
 
     if source.path.name == "2015년도_제2차_총회_목사고시___교단헌법.pdf":
         q17 = by_label.get("17")
