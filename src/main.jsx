@@ -205,9 +205,6 @@ function App() {
     setSelectedDocumentId(doc.id);
     setFilters((current) => ({
       ...current,
-      subject: doc.subject || "전체",
-      year: doc.year || "전체",
-      session: doc.session || "전체",
       type: "전체",
       query: "",
     }));
