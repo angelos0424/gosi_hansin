@@ -114,8 +114,21 @@ p {
   white-space: nowrap;
 }
 
+.icon-button {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
 .ghost-button:hover,
-.source-link:hover {
+.source-link:hover,
+.icon-button:hover {
   border-color: var(--line-strong);
   background: #fdfefe;
 }
@@ -582,6 +595,94 @@ p {
   color: var(--muted);
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 25, 31, 0.52);
+}
+
+.source-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1120px, 100%);
+  height: min(860px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(17, 25, 31, 0.28);
+}
+
+.source-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.source-modal-header h2 {
+  max-width: 760px;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 19px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-modal-header p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.source-modal-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.source-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #f2f4f6;
+}
+
+.source-text-preview {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+  background: #f8fafb;
+}
+
+.source-text-preview > p {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.source-text-preview pre {
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: #24313d;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 1050px) {
   .workspace {
     grid-template-columns: 1fr;
@@ -638,5 +739,23 @@ p {
 
   .question-card h3 {
     font-size: 19px;
+  }
+
+  .modal-backdrop {
+    padding: 12px;
+  }
+
+  .source-modal {
+    height: calc(100vh - 24px);
+  }
+
+  .source-modal-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-modal-header h2 {
+    max-width: none;
+    white-space: normal;
   }
 }

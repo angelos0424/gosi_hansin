@@ -4,13 +4,14 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
+  ExternalLink,
   FileText,
   Flag,
   ListFilter,
   RotateCcw,
   Search,
   Shuffle,
-  Sparkles,
+  X,
 } from "lucide-react";
 import data from "./questionData.json";
 import "./styles.css";
@@ -71,10 +72,19 @@ function documentDisplayName(fileName) {
     .trim();
 }
 
+function sourceUrl(document) {
+  return document ? encodeURI(`/${document.filePath}`) : "#";
+}
+
+function fileExtension(fileName = "") {
+  return fileName.split(".").pop()?.toLowerCase() || "";
+}
+
 function App() {
   const [filters, setFilters] = useState(initialFilters);
   const [activeId, setActiveId] = useState(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState(null);
+  const [sourceDocument, setSourceDocument] = useState(null);
   const [practiceSeed, setPracticeSeed] = useState(0);
   const [answers, updateAnswer, resetAnswers] = useStoredAnswers();
 
@@ -343,6 +353,7 @@ function App() {
                 answer={answers[activeQuestion.id] || {}}
                 updateAnswer={(patch) => updateAnswer(activeQuestion.id, patch)}
                 document={documentsById[activeQuestion.documentId]}
+                openSource={setSourceDocument}
               />
             ) : (
               <div className="empty-state">조건에 맞는 문제가 없습니다.</div>
@@ -350,6 +361,8 @@ function App() {
           </div>
         </section>
       </section>
+
+      <SourceModal document={sourceDocument} onClose={() => setSourceDocument(null)} />
     </main>
   );
 }
@@ -375,7 +388,7 @@ function Select({ label, value, onChange, children }) {
   );
 }
 
-function QuestionCard({ question, answer, updateAnswer, document }) {
+function QuestionCard({ question, answer, updateAnswer, document, openSource }) {
   const prompt = normalizeQuestionText(question);
 
   return (
@@ -444,9 +457,9 @@ function QuestionCard({ question, answer, updateAnswer, document }) {
         <button className={answer.flagged ? "flag-button active" : "flag-button"} onClick={() => updateAnswer({ flagged: !answer.flagged })}>
           <Flag size={17} /> 복습
         </button>
-        <a className="source-link" href={document ? `/${document.filePath}` : "#"} target="_blank" rel="noreferrer">
+        <button className="source-link" type="button" onClick={() => document && openSource(document)}>
           <FileText size={17} /> 원문
-        </a>
+        </button>
       </div>
 
       <footer className="question-source">
@@ -455,6 +468,51 @@ function QuestionCard({ question, answer, updateAnswer, document }) {
         <span>{question.fileName}</span>
       </footer>
     </article>
+  );
+}
+
+function SourceModal({ document, onClose }) {
+  if (!document) return null;
+
+  const url = sourceUrl(document);
+  const extension = fileExtension(document.fileName);
+  const canPreview = extension === "pdf";
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="source-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="source-modal-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="source-modal-header">
+          <div>
+            <span className="eyeless-label">원문</span>
+            <h2 id="source-modal-title">{documentDisplayName(document.fileName)}</h2>
+            <p>{document.year || "미상"} · {document.session} · {document.subject} · {document.questionCount}문항</p>
+          </div>
+          <div className="source-modal-actions">
+            <a className="source-link" href={url} target="_blank" rel="noreferrer">
+              <ExternalLink size={17} /> 새 창
+            </a>
+            <button className="icon-button" type="button" onClick={onClose} aria-label="원문 닫기">
+              <X size={20} />
+            </button>
+          </div>
+        </header>
+
+        {canPreview ? (
+          <iframe className="source-frame" title={`${document.fileName} 원문`} src={url} />
+        ) : (
+          <div className="source-text-preview">
+            <p>이 형식은 브라우저 안에서 직접 미리보기를 지원하지 않아 추출된 텍스트를 표시합니다.</p>
+            <pre>{document.rawText}</pre>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
