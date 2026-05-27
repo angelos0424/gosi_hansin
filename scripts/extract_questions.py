@@ -175,17 +175,38 @@ def has_numeric_options(text: str) -> bool:
     return len(re.findall(r"(?<!\d)(?:[1-9]|10)\)\s+", text)) >= 2
 
 
+def has_blank_placeholders(text: str) -> bool:
+    return bool(
+        re.search(r"\(\s*\)", text)
+        or re.search(r"\(\s{2,}\)", text)
+        or re.search(r"\(\s*[①②③④⑤⑥⑦⑧⑨⑩]\s*\)", text)
+        or re.search(r"괄호|빈칸|채우", text)
+    )
+
+
+def has_circled_options(text: str) -> bool:
+    for match in re.finditer(r"[①②③④⑤]", text):
+        before = text[max(0, match.start() - 3) : match.start()]
+        after = text[match.end() : match.end() + 3]
+        if "(" in before and ")" in after:
+            continue
+        if re.search(r"정답\s*:?\s*$", text[: match.start()]):
+            continue
+        return True
+    return False
+
+
 def question_type(text: str, context: str = "") -> str:
     combined = f"{context} {text}"
     if re.search(r"[○Ⅹ]", combined) or re.search(r"O\s*/\s*X", combined, re.I):
         return "ox"
-    if re.search(r"[①②③④⑤]", text) or (
+    if has_blank_placeholders(combined):
+        return "blank"
+    if has_circled_options(text) or (
         has_numeric_options(text)
         and re.search(r"틀린|아닌|고르|해당|설명|무엇인가|어느 것", text)
     ):
         return "choice"
-    if re.search(r"\(\s*\)|\(\s{2,}\)|괄호|빈칸|채우", combined):
-        return "blank"
     return "essay"
 
 
@@ -226,6 +247,8 @@ def is_group_parent_title(line: str) -> bool:
 
 
 def split_options(text: str) -> list[str]:
+    if has_blank_placeholders(text):
+        return []
     matches = list(re.finditer(r"[①②③④⑤]", text))
     if len(matches) < 2:
         matches = list(re.finditer(r"(?<!\d)(?:[1-9]|10)\)\s*", text))
@@ -245,8 +268,9 @@ def parse_score(questions: list[dict]) -> int:
         body = q.get("text", "")
         if re.search(r"다음 문제 중|번택 개|문항\s*[Xx×]\s*\d+점", body):
             suspicious += 1
-    choices = sum(1 for q in questions if q.get("type") == "choice")
-    return len(questions) * 20 + choices * 2 - suspicious * 25
+        if abs(body.count("(") - body.count(")")) > 2:
+            suspicious += 1
+    return len(questions) * 20 - suspicious * 25
 
 
 def detect_heading(line: str) -> tuple[str, str, str] | None:

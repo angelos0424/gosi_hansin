@@ -8670,7 +8670,7 @@
     "questionCount": 14,
     "segments": [
       {
-        "title": "우리 교단 헌법은 크게 세 부분으로 이루어져 있습니다. ( )를 채우십시오.",
+        "title": "우리 교단 헌법은 크게 세 부분으로 이루어져 있습니다. (",
         "expected": null,
         "rawCount": 1,
         "parsedCount": 1,
@@ -8683,7 +8683,7 @@
         "flags": []
       },
       {
-        "title": "제 38회 호헌총회 선언서 중에서 우리의 소신과 지도이념을 천명한 부분에 ( )를 채우",
+        "title": "제 38회 호헌총회 선언서 중에서 우리의 소신과 지도이념을 천명한 부분에 (",
         "expected": null,
         "rawCount": 1,
         "parsedCount": 1,
@@ -8735,7 +8735,7 @@
         "flags": []
       },
       {
-        "title": "신도에 대해 기술한 것 중 ( )를 채우십시오.",
+        "title": "신도에 대해 기술한 것 중 (",
         "expected": null,
         "rawCount": 1,
         "parsedCount": 1,
@@ -8761,7 +8761,7 @@
         "flags": []
       },
       {
-        "title": "부목사의 청빙에 관한 기술입니다. ( )를 채우십시오.",
+        "title": "부목사의 청빙에 관한 기술입니다. (",
         "expected": null,
         "rawCount": 1,
         "parsedCount": 1,
@@ -8774,7 +8774,7 @@
         "flags": []
       },
       {
-        "title": "장로의 선출과 임기에 관한 기술 중 ( )를 채우십시오.",
+        "title": "장로의 선출과 임기에 관한 기술 중 (",
         "expected": null,
         "rawCount": 1,
         "parsedCount": 1,
@@ -8813,7 +8813,7 @@
         "flags": []
       },
       {
-        "title": "다음 기술한 것에 대해 ( )를 채우십시오.",
+        "title": "다음 기술한 것에 대해 (",
         "expected": null,
         "rawCount": 1,
         "parsedCount": 1,
@@ -8826,7 +8826,7 @@
         "flags": []
       },
       {
-        "title": "다음은 재판 위원의 제척요건에 관한 기술입니다. ( )를 채우십시오.",
+        "title": "다음은 재판 위원의 제척요건에 관한 기술입니다. (",
         "expected": null,
         "rawCount": 1,
         "parsedCount": 1,

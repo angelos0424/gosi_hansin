@@ -31,25 +31,47 @@ const initialFilters = {
   query: "",
 };
 
+const ANSWER_STORAGE_KEY = "prok-study-answers-v2";
+const LEGACY_ANSWER_STORAGE_KEY = "prok-study-answers";
+
+function questionAnswerKey(question) {
+  const label = question.displayLabel || question.numberLabel || question.number || "";
+  const title = (question.title || question.text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return `${question.documentId}::${label}::${title}`;
+}
+
+function getQuestionAnswer(answers, question) {
+  if (!question) return {};
+  return answers[questionAnswerKey(question)] || answers[question.id] || {};
+}
+
 function useStoredAnswers() {
   const [answers, setAnswers] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("prok-study-answers") || "{}");
+      const current = JSON.parse(localStorage.getItem(ANSWER_STORAGE_KEY) || "{}");
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_ANSWER_STORAGE_KEY) || "{}");
+      return { ...legacy, ...current };
     } catch {
       return {};
     }
   });
 
-  const updateAnswer = (id, patch) => {
+  const updateAnswer = (question, patch) => {
     setAnswers((current) => {
-      const next = { ...current, [id]: { ...(current[id] || {}), ...patch } };
-      localStorage.setItem("prok-study-answers", JSON.stringify(next));
+      const stableKey = questionAnswerKey(question);
+      const existing = current[stableKey] || current[question.id] || {};
+      const next = { ...current, [stableKey]: { ...existing, ...patch } };
+      localStorage.setItem(ANSWER_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   };
 
   const reset = () => {
-    localStorage.removeItem("prok-study-answers");
+    localStorage.removeItem(ANSWER_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_ANSWER_STORAGE_KEY);
     setAnswers({});
   };
 
@@ -189,8 +211,8 @@ function App() {
   }, [activeId, practiceQuestions, filteredQuestions]);
 
   const stats = useMemo(() => {
-    const completed = data.questions.filter((q) => answers[q.id]?.done).length;
-    const flagged = data.questions.filter((q) => answers[q.id]?.flagged).length;
+    const completed = data.questions.filter((q) => getQuestionAnswer(answers, q).done).length;
+    const flagged = data.questions.filter((q) => getQuestionAnswer(answers, q).flagged).length;
     return {
       documents: data.documents.length,
       questions: data.questions.length,
@@ -333,25 +355,28 @@ function App() {
 
           <div className="question-layout">
             <nav className="question-rail" aria-label="문제 선택">
-              {practiceQuestions.map((q, index) => (
+              {practiceQuestions.map((q, index) => {
+                const answer = getQuestionAnswer(answers, q);
+                return (
                 <button
                   key={q.id}
                   className={`rail-item ${activeQuestion?.id === q.id ? "active" : ""} ${
-                    answers[q.id]?.done ? "done" : ""
+                    answer.done ? "done" : ""
                   }`}
                   onClick={() => setActiveId(q.id)}
                 >
                   <span>{index + 1}</span>
                   <small>{q.subject}</small>
                 </button>
-              ))}
+                );
+              })}
             </nav>
 
             {activeQuestion ? (
               <QuestionCard
                 question={activeQuestion}
-                answer={answers[activeQuestion.id] || {}}
-                updateAnswer={(patch) => updateAnswer(activeQuestion.id, patch)}
+                answer={getQuestionAnswer(answers, activeQuestion)}
+                updateAnswer={(patch) => updateAnswer(activeQuestion, patch)}
                 document={documentsById[activeQuestion.documentId]}
                 openSource={setSourceDocument}
               />
@@ -398,18 +423,13 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource }) 
         <span>{question.session}</span>
         <span>{question.subject}</span>
         <span>{typeLabels[question.type]}</span>
+        <span>문제 {question.displayLabel || question.numberLabel || question.number}</span>
       </div>
 
       {question.groupTitle && <div className="group-prompt">{question.groupTitle}</div>}
 
-      <h3>
-        <span>문제 {question.displayLabel || question.numberLabel || question.number}</span>문제 본문
-      </h3>
       {question.title && (
-        <div className="question-title">
-          <strong>문항 제목</strong>
-          <p>{question.title}</p>
-        </div>
+        <h3 className="question-title">{question.title}</h3>
       )}
       {question.body && question.body !== question.title && <p className="question-body">{prompt}</p>}
 

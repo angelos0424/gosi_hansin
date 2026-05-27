@@ -439,12 +439,6 @@ p {
   font-weight: 750;
 }
 
-.question-card h3 {
-  font-size: 23px;
-  line-height: 1.55;
-  font-weight: 750;
-}
-
 .group-prompt {
   margin-bottom: 12px;
   border-left: 4px solid var(--teal);
@@ -457,30 +451,10 @@ p {
   line-height: 1.5;
 }
 
-.question-card h3 span {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--teal);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
 .question-title {
-  margin-top: 12px;
-  margin-bottom: 14px;
+  margin: 0 0 14px 0;
   border-left: 4px solid var(--blue);
   padding-left: 12px;
-}
-
-.question-title strong {
-  display: block;
-  color: #27476a;
-  font-size: 12px;
-  margin-bottom: 3px;
-}
-
-.question-title p {
-  margin: 0;
   color: #1f2f44;
   font-weight: 760;
   line-height: 1.6;
@@ -737,7 +711,7 @@ p {
     min-width: 64px;
   }
 
-  .question-card h3 {
+  .question-title {
     font-size: 19px;
   }
 
