@@ -14107,7 +14107,7 @@
     "year": 2013,
     "session": "제2차",
     "subject": "성경",
-    "questionCount": 22,
+    "questionCount": 27,
     "segments": [
       {
         "title": "아브라함의 소명(창세기 12장)에서 아브라함을 부르신 하나님의 뜻은 무엇이었습니까?",
@@ -14175,6 +14175,19 @@
         "flags": []
       },
       {
+        "title": "제2 이사야의 중심사상 두 가지는 무엇입니까? (4점)",
+        "expected": null,
+        "rawCount": 1,
+        "parsedCount": 1,
+        "rawLabels": [
+          "6-7"
+        ],
+        "parsedLabels": [
+          "6-7"
+        ],
+        "flags": []
+      },
+      {
         "title": "예레미야 성전설교(26:1-6)의 핵심은 무엇입니까?",
         "expected": null,
         "rawCount": 1,
@@ -14210,6 +14223,19 @@
         ],
         "parsedLabels": [
           "10"
+        ],
+        "flags": []
+      },
+      {
+        "title": "“이에 토지가 황폐하여 땅이 안식년을 누림 같이 안식하여 칠십 년을 지냈으니",
+        "expected": null,
+        "rawCount": 1,
+        "parsedCount": 1,
+        "rawLabels": [
+          "11-12"
+        ],
+        "parsedLabels": [
+          "11-12"
         ],
         "flags": []
       },
@@ -14331,6 +14357,32 @@
         "flags": []
       },
       {
+        "title": "다음을 서로 맞는 것들끼리 연결하시오. (6점)",
+        "expected": null,
+        "rawCount": 1,
+        "parsedCount": 1,
+        "rawLabels": [
+          "22-24"
+        ],
+        "parsedLabels": [
+          "22-24"
+        ],
+        "flags": []
+      },
+      {
+        "title": "“그러므로 너희는 가서 모든 민족을 제자로 삼아 아버지와 아들과 성령의 이름",
+        "expected": null,
+        "rawCount": 1,
+        "parsedCount": 1,
+        "rawLabels": [
+          "25-26"
+        ],
+        "parsedLabels": [
+          "25-26"
+        ],
+        "flags": []
+      },
+      {
         "title": "누가의 특수자료들이 주로 관심하는 초점은 어디에 있습니까?",
         "expected": null,
         "rawCount": 1,
@@ -14340,6 +14392,19 @@
         ],
         "parsedLabels": [
           "27"
+        ],
+        "flags": []
+      },
+      {
+        "title": "다음은 예수께서 십자가상에서 하신 말씀이다, 각각 어느 책에 기록된 말씀입니",
+        "expected": null,
+        "rawCount": 1,
+        "parsedCount": 1,
+        "rawLabels": [
+          "28-30"
+        ],
+        "parsedLabels": [
+          "28-30"
         ],
         "flags": []
       },

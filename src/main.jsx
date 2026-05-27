@@ -372,7 +372,7 @@ function App() {
                   }`}
                   onClick={() => setActiveId(q.id)}
                 >
-                  <span>{index + 1}</span>
+                  <span>{selectedDocumentId ? q.displayLabel || q.numberLabel || index + 1 : index + 1}</span>
                   <small>{q.subject}</small>
                 </button>
                 );

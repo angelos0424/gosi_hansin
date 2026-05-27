@@ -76,12 +76,21 @@ def _label_prefix(label: str | None) -> str | None:
     return label.split("-", 1)[0]
 
 
+def _normalize_label(label: str | None) -> str | None:
+    if not label:
+        return None
+    parts = re.split(r"\s*-\s*", label.strip())
+    if all(part.isdigit() for part in parts):
+        return "-".join(str(int(part)) for part in parts)
+    return re.sub(r"\s+", "", label.strip())
+
+
 def _segment_key(title: str, label: str | None) -> str:
     normalized = normalize_title(title)
     return f"{normalized}::{_label_prefix(label) or 'na'}"
 
 
-def line_question_label(line: str, active_group: int | None) -> str | None:
+def line_question_label(line: str, active_group: str | None) -> str | None:
     sub = re.match(r"^(?:문)?(\d+)\)\s+", line)
     if sub and active_group is not None:
         return f"{active_group}-{int(sub.group(1))}"
@@ -125,7 +134,7 @@ def raw_segments(text: str) -> list[dict]:
         "starter": None,
         "isContainer": False,
     }
-    active_group: int | None = None
+    active_group: str | None = None
     parent_child_style: str | None = None
 
     def push() -> None:
@@ -150,14 +159,15 @@ def raw_segments(text: str) -> list[dict]:
         next_line = lookahead_question_line(lines, idx + 1) if idx + 1 < len(lines) else ""
         if heading is not None:
             kind, raw_number, raw_title = heading
+            normalized_number = _normalize_label(raw_number)
             is_parent_group = (kind in {"dot", "bracket", "loose"}) and should_start_parent_group(line, next_line)
             heading_style = "dot" if kind in {"dot", "bracket", "loose"} else "paren"
 
             if is_parent_group:
                 if current["rawLabels"] or current["title"] != "문서 시작":
                     push()
-                current = make_segment(raw_title, str(int(raw_number)), kind, True)
-                active_group = int(raw_number)
+                current = make_segment(raw_title, normalized_number, kind, True)
+                active_group = normalized_number
                 parent_child_style = None
                 continue
 
@@ -174,7 +184,7 @@ def raw_segments(text: str) -> list[dict]:
                 if parent_child_style is None:
                     parent_child_style = heading_style
                 if parent_child_style == heading_style:
-                    current["rawLabels"].append(f"{active_group}-{int(raw_number)}")
+                    current["rawLabels"].append(f"{active_group}-{normalized_number}")
                     current["lineCount"] += 1
                     continue
 
@@ -187,10 +197,10 @@ def raw_segments(text: str) -> list[dict]:
                 push()
             current = make_segment(
                 raw_title,
-                str(int(raw_number)),
+                normalized_number,
                 kind,
                 False,
-                [str(int(raw_number))],
+                [normalized_number],
             )
             active_group = None
             continue

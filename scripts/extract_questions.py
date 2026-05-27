@@ -324,6 +324,10 @@ def parse_score(questions: list[dict]) -> int:
 
 
 def detect_heading(line: str) -> tuple[str, str, str] | None:
+    match = re.match(r"^(\d+\s*-\s*\d+)\.\s*(.+)", line)
+    if match:
+        return "dot", re.sub(r"\s+", "", match.group(1)), match.group(2).strip()
+
     match = re.match(r"^(?:문)?(\d+)\.\s*(.+)", line)
     if match:
         return "dot", match.group(1), match.group(2).strip()
@@ -669,6 +673,7 @@ def apply_display_labels(questions: list[dict]) -> None:
 
 def normalize_manual_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s*\[(?:객관식|단답형|서술형|논술형)\].*$", "", text).strip()
     replacements = {
         "기술하 고": "기술하고",
         "무엇입 니까": "무엇입니까",
@@ -681,6 +686,14 @@ def normalize_manual_text(text: str) -> str:
         "성 서적": "성서적",
         "노 회": "노회",
         "교 회": "교회",
+        "사랑하 라": "사랑하라",
+        "역사 를": "역사를",
+        "나귀 를": "나귀를",
+        "말씀입니 까": "말씀입니까",
+        "차 이점": "차이점",
+        "가르 치며": "가르치며",
+        "이름 으로": "이름으로",
+        "때” 가": "때”가",
     }
     for before, after in replacements.items():
         text = text.replace(before, after)
@@ -739,6 +752,18 @@ def repair_essay_prompt(question: dict, keep_body: bool = False) -> None:
     question["body"] = body
     question["text"] = normalize_manual_text(f"{title} {body}") if keep_body and body != title else title
     question["type"] = "essay"
+    question["options"] = []
+
+
+def repair_blank_prompt(question: dict) -> None:
+    title = normalize_manual_text(question.get("title", ""))
+    body = normalize_manual_text(question.get("body", ""))
+    prompt = normalize_manual_text(f"{title} {body}") if body and body != title else title
+    question["groupTitle"] = prompt
+    question["title"] = prompt
+    question["body"] = prompt
+    question["text"] = prompt
+    question["type"] = "blank"
     question["options"] = []
 
 
@@ -815,6 +840,46 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
                 repair_choice_from_options(question)
             else:
                 repair_essay_prompt(question)
+
+    if source.path.name == "2013년도_제1차_총회_목사고시___교단헌법.pdf":
+        for question in questions:
+            label = str(question.get("numberLabel"))
+            if label in {"10", "18", "20"}:
+                repair_choice_from_options(question)
+            elif label == "12":
+                repair_essay_prompt(question, keep_body=True)
+            else:
+                repair_essay_prompt(question)
+
+    if source.path.name == "2013년도_제1차_총회_목사고시___성경.pdf":
+        for question in questions:
+            repair_essay_prompt(question)
+
+    if source.path.name == "2013년도_제2차_총회__목사고시___교단헌법.pdf":
+        for question in questions:
+            label = str(question.get("numberLabel"))
+            if label in {"11", "12", "14", "16"}:
+                repair_choice_from_options(question)
+            elif label in {"6", "7", "20"}:
+                repair_essay_prompt(question, keep_body=True)
+            elif question.get("type") == "blank":
+                question["groupTitle"] = normalize_manual_text(question.get("title", ""))
+                question["title"] = normalize_manual_text(question.get("title", ""))
+                question["body"] = normalize_manual_text(question.get("body", ""))
+                question["text"] = normalize_manual_text(f"{question['title']} {question['body']}")
+                question["options"] = []
+            else:
+                repair_essay_prompt(question)
+
+    if source.path.name == "2013년도_제2차_총회_목사고시___성경.pdf":
+        for question in questions:
+            label = str(question.get("numberLabel"))
+            if label in {"25-26", "28-30"}:
+                repair_blank_prompt(question)
+            elif label in {"9", "10", "11-12", "13", "15", "32"}:
+                repair_essay_prompt(question)
+            else:
+                repair_essay_prompt(question, keep_body=bool(question.get("body") and question.get("body") != question.get("title")))
 
     if source.path.name == "2023년도_제2차_총회_목사고시_헌법_문제_20230620_.pdf":
         choice_instruction = "※ 한 가지를 고르는 문제입니다. ( ) 안에 정답의 번호를 쓰십시오."
