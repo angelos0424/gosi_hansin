@@ -699,7 +699,8 @@ def format_structured_body(text: str) -> str:
     text = re.sub(r"\s+정답:", "\n정답:", text)
     text = re.sub(r"\s+(?=■\s*[①②③④⑤⑥⑦⑧⑨⑩])", "\n", text)
     text = re.sub(r"(?<![\(（])\s+([①②③④⑤⑥⑦⑧⑨⑩])(?!\s*[\)①②③④⑤⑥⑦⑧⑨⑩](?:\s|$))", r"\n\1", text)
-    text = re.sub(r"(?<!,)" + STRUCTURED_ITEM_RE.pattern, r"\n\1", text)
+    if re.search(r"(?:^|\s)1\).+\s2\)", text):
+        text = re.sub(r"(?<!,)" + STRUCTURED_ITEM_RE.pattern, r"\n\1", text)
     text = re.sub(r"정답:\s*((?:[①②③④⑤⑥⑦⑧⑨⑩]\s*)+)", lambda match: "정답: " + " ".join(match.group(1).split()), text)
     text = re.sub(r"\n{2,}", "\n", text)
 
@@ -921,6 +922,37 @@ def apply_parent_prompt(question: dict, parent_title: str) -> None:
     question["text"] = normalize_manual_text(f"{parent_title} {body}")
 
 
+def make_manual_question(number_label: str, parent_title: str, body: str, qtype: str = "essay") -> dict:
+    return {
+        "number": 0,
+        "numberLabel": number_label,
+        "groupNumber": None,
+        "groupTitle": parent_title,
+        "section": "일반",
+        "title": parent_title,
+        "hasChildren": False,
+        "isContainer": False,
+        "body": body,
+        "text": f"{parent_title}\n{body}",
+        "type": qtype,
+        "options": [],
+    }
+
+
+def insert_missing_questions_after(questions: list[dict], after_label: str, entries: list[dict]) -> None:
+    existing = {str(question.get("numberLabel", "")) for question in questions}
+    insert_at = next(
+        (index + 1 for index, question in enumerate(questions) if question.get("numberLabel") == after_label),
+        len(questions),
+    )
+    for entry in entries:
+        if entry["numberLabel"] in existing:
+            continue
+        questions.insert(insert_at, entry)
+        existing.add(entry["numberLabel"])
+        insert_at += 1
+
+
 def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
     by_label = {str(question.get("numberLabel")): question for question in questions}
 
@@ -1099,14 +1131,74 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
             repair_essay_prompt(q17, keep_body=True)
 
     if source.path.name == "2016년_제1차_목사고시_문제___성경.hwp":
-        q32 = by_label.get("3-2")
-        if q32:
-            repair_essay_prompt(q32)
+        parent_titles = {
+            "1": "1. 다음에 답하시오. (6문항×5점) (괄호 안의 숫자는 해당하는 책의 숫자를 표시함)",
+            "2": "2. 다음 보기에서 관련 있는 것을 골라 쓰시오. (10문항×3점) (성구인용은 개역개정을 따름)",
+            "3": "3. 다음 중 5개(최소 구약 2개, 신약 2개)를 선택하여 설명하시오. (5문항×8점)",
+        }
+        for question in questions:
+            label = str(question.get("numberLabel", ""))
+            group = label.split("-", 1)[0]
+            if group in parent_titles:
+                apply_parent_prompt(question, parent_titles[group])
+                question["type"] = "blank" if group == "2" else "essay"
+                question["options"] = []
+
+        parent_title = parent_titles["3"]
+        insert_missing_questions_after(
+            questions,
+            "3-5",
+            [
+                make_manual_question("3-6", parent_title, "6) 주기도문은 몇 개의 기원으로 구성되어있는가?"),
+                make_manual_question("3-7", parent_title, "7) 고린도서와 공관복음서에 있는 성만찬 전승의 관계를 설명하시오."),
+                make_manual_question("3-8", parent_title, "8) 그리스도 찬가(빌립보서 2:5-11)의 신학적 의미를 설명하시오."),
+            ],
+        )
 
     if source.path.name == "2016년도_제2차_목사고시_문제___교단헌법.hwp":
+        q17 = by_label.get("17")
+        if q17:
+            q17["groupTitle"] = "헌법 권징 제2장 재판의 특별규정 제101조 ‘직원의 가중처벌’에 대한 질문입니다."
+            q17["title"] = q17["groupTitle"]
+            q17["body"] = "“정직이나 수찬 정지를 당한 직원이 1년 안에 회개치 않으면 재판 없이 면직할 수 있다.”로 되어 있는데 1년 안에 회개하는지 안 하는지 평가는 누가 하는 것인가?(정치치리총람 10권징. [36])"
+            q17["text"] = f"{q17['title']}\n{q17['body']}"
+        q22 = by_label.get("22")
+        if q22:
+            title = "담임목사 청빙을 위한 공동의회를 열어 세례교인 150명이 참여하여 투표를 했다. 투표결과 찬성 98명 반대 30명 기권 22명으로 결과가 나왔다. 담임목사 청빙은 가능한가? 불가능한가? 가능하다면 가능한 이유를, 불가능하면 불가능한 이유를 서술하시오.(정치치리총람 2목사.3].[9],[10])(5점)"
+            q22["groupTitle"] = title
+            q22["title"] = title
+            q22["body"] = title
+            q22["text"] = title
         q23 = by_label.get("23")
         if q23:
             repair_essay_prompt(q23)
+
+    if source.path.name == "2016년_제2차_목사고시_문제___성경.hwp":
+        parent_titles = {
+            "1": "1. 다음에 해당하는 성경의 책이름을 성경의 순서대로 쓰시오. (30점; 책1권당 1점) (괄호 안의 숫자는 정답 숫자를 표시함)",
+            "2": "2. 다음 성구가 나오는 성경의 책 이름과 해당하는 장수를 쓰시오. (10문항×3점. ※책만 쓸 경우 2점), (성구인용은 개역개정을 따름)",
+            "3": "3. 다음 중 5개(최소 구약 2개, 신약 2개)를 선택해서 설명하시오. (5문항×8점)",
+        }
+        for question in questions:
+            label = str(question.get("numberLabel", ""))
+            group = label.split("-", 1)[0]
+            if group in parent_titles:
+                apply_parent_prompt(question, parent_titles[group])
+                question["type"] = "essay"
+                question["options"] = []
+
+        parent_title = parent_titles["3"]
+        insert_missing_questions_after(
+            questions,
+            "3-5",
+            [
+                make_manual_question("3-6", parent_title, "6) 복음이란 무엇인가?"),
+                make_manual_question("3-7", parent_title, "7) 누가복음 4:17-21의 메시야 취임설교의 의미는 무엇인가?"),
+                make_manual_question("3-8", parent_title, "8) 주기도문은 몇 개의 기원으로 구성되어 있는가?"),
+                make_manual_question("3-9", parent_title, "9) 바울서신의 특징은 무엇인가?"),
+                make_manual_question("3-10", parent_title, "10) 목회서신에 나타난 교회의 직제를 기술하시오."),
+            ],
+        )
 
     if source.path.name == "2017년도_제1차_목사고시_문제___성경.hwp":
         for label in {"3-2", "3-6", "3-7"}:
