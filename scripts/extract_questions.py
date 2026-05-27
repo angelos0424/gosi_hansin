@@ -677,6 +677,7 @@ def normalize_manual_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s*\[(?:객관식|단답형|서술형|논술형)\].*$", "", text).strip()
     text = re.sub(r"\s*[▶★]\s*(?:구약성경|신약성경|구약선택|신약선택|아래 물음에 맞게).*$", "", text).strip()
+    text = re.sub(r"\s*▶\s*다음 .*$", "", text).strip()
     text = re.sub(r"\s*※\s*다음 .*$", "", text).strip()
     text = re.sub(r"\s*※\s*다음의? 물음.*$", "", text).strip()
     text = re.sub(r"\s*★\s*아래 물음.*$", "", text).strip()
@@ -806,6 +807,24 @@ def repair_current_prompt(question: dict) -> None:
         question["options"] = []
     else:
         repair_essay_prompt(question)
+
+
+def apply_parent_prompt(question: dict, parent_title: str) -> None:
+    parent_title = normalize_manual_text(parent_title)
+    child_title = normalize_manual_text(question.get("title", ""))
+    child_body = normalize_manual_text(question.get("body", ""))
+
+    if question.get("type") == "choice":
+        body = normalize_manual_text(f"{child_title} {child_body}") if child_body else child_title
+    elif child_body and child_body != child_title:
+        body = normalize_manual_text(f"{child_title} {child_body}")
+    else:
+        body = child_title
+
+    question["groupTitle"] = parent_title
+    question["title"] = parent_title
+    question["body"] = body
+    question["text"] = normalize_manual_text(f"{parent_title} {body}")
 
 
 def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
@@ -951,6 +970,16 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
             question = by_label.get(label)
             if question:
                 repair_essay_prompt(question)
+        parent_titles = {
+            "1": "1. 다음에 답하시오. (15점; 5문항X3점. 괄호 안의 숫자는 해당하는 책의 숫자를 표시함)",
+            "2": "2. 다음 질문에 대한 정답을 적으시오. (60점; 20문항X3점. 성구인용은 개역개정을 따름)",
+            "3": "3. 다음 중 5개(성경일반 1; 구약 2; 신약 2)를 선택하여 설명하시오. (25점; 5문항X5점)",
+        }
+        for question in questions:
+            label = str(question.get("numberLabel"))
+            parent = label.split("-", 1)[0]
+            if parent in parent_titles:
+                apply_parent_prompt(question, parent_titles[parent])
 
     if source.path.name == "2017년도_제2차_총회_목사고시_문제___헌법.hwp":
         for label in map(str, range(23, 30)):
