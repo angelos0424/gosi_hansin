@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BookOpen,
@@ -258,7 +258,7 @@ function App() {
             <BookOpen size={22} />
           </span>
           <div>
-            <h1>목사고시 기출문제 학습실</h1>
+            <h1>목사고시 기출문제</h1>
             <p>2010-2026년 공개 기출문제를 연도와 과목별로 풀어보는 로컬 학습 사이트</p>
           </div>
         </div>
@@ -298,31 +298,36 @@ function App() {
               onChange={(e) => updateFilter("query", e.target.value)}
               placeholder="본문, 파일명, 연도 검색"
             />
-            <Select label="과목" value={filters.subject} onChange={(v) => updateFilter("subject", v)}>
-              <option>전체</option>
-              <option>성경</option>
-              <option>교단헌법</option>
-            </Select>
-            <Select label="연도" value={filters.year} onChange={(v) => updateFilter("year", v)}>
-              <option>전체</option>
-              {years.map((year) => (
-                <option key={year}>{year}</option>
-              ))}
-            </Select>
-            <Select label="회차" value={filters.session} onChange={(v) => updateFilter("session", v)}>
-              <option>전체</option>
-              <option>제1차</option>
-              <option>제2차</option>
-              <option>기타</option>
-            </Select>
-            <Select label="유형" value={filters.type} onChange={(v) => updateFilter("type", v)}>
-              <option>전체</option>
-              {Object.entries(typeLabels).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </Select>
+            <Select
+              label="과목"
+              value={filters.subject}
+              onChange={(v) => updateFilter("subject", v)}
+              options={["전체", "성경", "교단헌법"].map((label) => ({ label, value: label }))}
+            />
+            <Select
+              label="연도"
+              value={filters.year}
+              onChange={(v) => updateFilter("year", v)}
+              options={[
+                { label: "전체", value: "전체" },
+                ...years.map((year) => ({ label: String(year), value: String(year) })),
+              ]}
+            />
+            <Select
+              label="회차"
+              value={filters.session}
+              onChange={(v) => updateFilter("session", v)}
+              options={["전체", "제1차", "제2차", "기타"].map((label) => ({ label, value: label }))}
+            />
+            <Select
+              label="유형"
+              value={filters.type}
+              onChange={(v) => updateFilter("type", v)}
+              options={[
+                { label: "전체", value: "전체" },
+                ...Object.entries(typeLabels).map(([value, label]) => ({ label, value })),
+              ]}
+            />
           </div>
 
           <div className="source-list">
@@ -409,14 +414,55 @@ function Metric({ label, value, icon }) {
   );
 }
 
-function Select({ label, value, onChange, children }) {
+function Select({ label, value, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = options.find((option) => String(option.value) === String(value)) || options[0];
+  const listboxId = `${label}-select-listbox`;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (!ref.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+
   return (
-    <label className="select-field">
+    <div className={`select-field ${open ? "open" : ""}`} ref={ref}>
       <span>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {children}
-      </select>
-    </label>
+      <button
+        aria-controls={listboxId}
+        aria-expanded={open}
+        className="select-trigger"
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{selected.label}</span>
+      </button>
+      {open && (
+        <div className="select-menu" id={listboxId} role="listbox">
+          {options.map((option) => (
+            <button
+              aria-selected={String(option.value) === String(value)}
+              className="select-option"
+              key={option.value}
+              role="option"
+              type="button"
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
