@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOWNLOADS = ROOT / "downloads"
 OUT = ROOT / "src" / "questionData.json"
 HWP5TXT = Path("/Users/windows11/Library/Python/3.14/bin/hwp5txt")
+HWPJS = ROOT / "node_modules" / ".bin" / "hwpjs"
 MAX_GRP_LOOKAHEAD = 8
 CIRCLED_MARKERS = "①②③④⑤⑥⑦⑧⑨⑩"
 CHOICE_CUE_RE = re.compile(
@@ -44,12 +45,28 @@ def extract_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def extract_hwp_markdown(path: Path) -> str | None:
+    if not HWPJS.exists():
+        return None
+    try:
+        return run_text([str(HWPJS), "to-markdown", str(path)])
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
 def extract_candidates(path: Path) -> list[str]:
     if path.suffix.lower() == ".pdf":
         return [
             run_text(["pdftotext", "-layout", str(path), "-"]),
             run_text(["pdftotext", str(path), "-"]),
         ]
+    if path.suffix.lower() == ".hwp":
+        candidates = []
+        markdown = extract_hwp_markdown(path)
+        if markdown:
+            candidates.append(markdown)
+        candidates.append(extract_text(path))
+        return list(dict.fromkeys(candidates))
     return [extract_text(path)]
 
 
@@ -77,8 +94,17 @@ def clean_lines(text: str) -> list[str]:
     text = text.replace("\x0c", "\n")
     lines = []
     for raw in text.splitlines():
-        line = re.sub(r"\s+", " ", raw).strip()
+        line = re.sub(r"!\[[^\]]*]\([^)]*\)", "", raw)
+        line = re.sub(r"^\s*#+\s*", "", line)
+        line = line.replace("**", "").replace("__", "")
+        line = re.sub(r"\s+", " ", line).strip()
+        if line.startswith("|") and line.endswith("|"):
+            line = line.strip("|").strip()
         if not line:
+            continue
+        if line == "HWP 문서" or re.fullmatch(r"버전\s*:.*", line):
+            continue
+        if re.fullmatch(r":?-{3,}:?(?:\s*\|\s*:?-{3,}:?)*", line):
             continue
         if re.fullmatch(r"\[\s*[0-9]+\s*[~\-~]\s*[0-9]+\s*번", line):
             continue
@@ -283,9 +309,16 @@ def parse_score(questions: list[dict]) -> int:
     suspicious = 0
     for q in questions:
         body = q.get("text", "")
+        title = q.get("title", "")
         if re.search(r"다음 문제 중|번택 개|문항\s*[Xx×]\s*\d+점", body):
             suspicious += 1
-        if abs(body.count("(") - body.count(")")) > 2:
+        if re.search(r"\(\s*$", title):
+            suspicious += 4
+        if re.search(r"^\)\s*(?:를|을|와|과|의|인|수)", q.get("body", "")):
+            suspicious += 3
+        if re.search(r"\d{4}년도\s+제\d차\s+목사고시.*\[\s*헌법\s*]", q.get("body", "")):
+            suspicious += 2
+        if abs(body.count("(") - body.count(")")) > 2 and not re.search(r"\(\s*\)|괄호|빈칸|채우", body):
             suspicious += 1
     return len(questions) * 20 - suspicious * 25
 
