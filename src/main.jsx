@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  ArrowRight,
   BookOpen,
   CheckCircle2,
   ChevronDown,
@@ -252,6 +253,16 @@ function App() {
     setActiveId(null);
   };
 
+  const activeQuestionIndex = activeQuestion ? practiceQuestions.findIndex((q) => q.id === activeQuestion.id) : -1;
+
+  const goToNextQuestion = () => {
+    if (!activeQuestion) return;
+    const nextQuestion = practiceQuestions[activeQuestionIndex + 1];
+    if (nextQuestion) {
+      setActiveId(nextQuestion.id);
+    }
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -406,6 +417,8 @@ function App() {
                 updateAnswer={(patch) => updateAnswer(activeQuestion, patch)}
                 document={documentsById[activeQuestion.documentId]}
                 openSource={setSourceDocument}
+                onNext={goToNextQuestion}
+                hasNext={activeQuestionIndex >= 0 && activeQuestionIndex < practiceQuestions.length - 1}
               />
             ) : (
               <div className="empty-state">조건에 맞는 문제가 없습니다.</div>
@@ -481,7 +494,7 @@ function Select({ label, value, onChange, options }) {
   );
 }
 
-function QuestionCard({ question, answer, updateAnswer, document, openSource }) {
+function QuestionCard({ question, answer, updateAnswer, document, openSource, onNext, hasNext }) {
   const prompt = normalizeQuestionText(question);
   const groupPrompt = question.groupTitle && question.groupTitle !== question.title ? question.groupTitle : "";
 
@@ -540,15 +553,22 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource }) 
       </label>
 
       <div className="question-actions">
-        <button className={answer.done ? "primary-button done" : "primary-button"} onClick={() => updateAnswer({ done: !answer.done })}>
-          <CheckCircle2 size={17} /> {answer.done ? "완료됨" : "완료 표시"}
-        </button>
-        <button className={answer.flagged ? "flag-button active" : "flag-button"} onClick={() => updateAnswer({ flagged: !answer.flagged })}>
-          <Flag size={17} /> 복습
-        </button>
-        <button className="source-link" type="button" onClick={() => document && openSource(document)}>
-          <FileText size={17} /> 원문
-        </button>
+        <div className="action-row primary-row">
+          <button className={answer.done ? "primary-button done" : "primary-button"} onClick={() => updateAnswer({ done: !answer.done })}>
+            <CheckCircle2 size={17} /> 완료 표시
+          </button>
+          <button className="ghost-button next-button" type="button" onClick={onNext} disabled={!hasNext}>
+            다음 <ArrowRight size={17} />
+          </button>
+        </div>
+        <div className="action-row secondary-row">
+          <button className={answer.flagged ? "flag-button active" : "flag-button"} onClick={() => updateAnswer({ flagged: !answer.flagged })}>
+            <Flag size={17} /> 복습
+          </button>
+          <button className="source-link" type="button" onClick={() => document && openSource(document)}>
+            <FileText size={17} /> 원본
+          </button>
+        </div>
       </div>
 
       <footer className="question-source">
