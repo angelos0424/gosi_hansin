@@ -13,6 +13,11 @@ DOWNLOADS = ROOT / "downloads"
 OUT = ROOT / "src" / "questionData.json"
 HWP5TXT = Path("/Users/windows11/Library/Python/3.14/bin/hwp5txt")
 MAX_GRP_LOOKAHEAD = 8
+CIRCLED_MARKERS = "①②③④⑤⑥⑦⑧⑨⑩"
+CHOICE_CUE_RE = re.compile(
+    r"한\s*가지.*고르|정답의\s*번호|틀린|아닌|잘못|속하지\s*않|고르|골라|선택|"
+    r"해당|어느\s*것|무엇입니까\?\s*\(\s*\)"
+)
 
 
 @dataclass
@@ -179,18 +184,26 @@ def has_blank_placeholders(text: str) -> bool:
     return bool(
         re.search(r"\(\s*\)", text)
         or re.search(r"\(\s{2,}\)", text)
-        or re.search(r"\(\s*[①②③④⑤⑥⑦⑧⑨⑩]\s*\)", text)
+        or re.search(rf"\(\s*[{CIRCLED_MARKERS}]\s*\)", text)
         or re.search(r"괄호|빈칸|채우", text)
     )
 
 
+def is_answer_key_marker(text: str, marker_start: int) -> bool:
+    answer_pos = text.rfind("정답", 0, marker_start)
+    if answer_pos < 0:
+        return False
+    tail = text[answer_pos:marker_start]
+    return bool(re.fullmatch(rf"정답\s*:?\s*(?:[{CIRCLED_MARKERS}]\s*)*", tail))
+
+
 def has_circled_options(text: str) -> bool:
-    for match in re.finditer(r"[①②③④⑤]", text):
+    for match in re.finditer(rf"[{CIRCLED_MARKERS}]", text):
         before = text[max(0, match.start() - 3) : match.start()]
         after = text[match.end() : match.end() + 3]
         if "(" in before and ")" in after:
             continue
-        if re.search(r"정답\s*:?\s*$", text[: match.start()]):
+        if is_answer_key_marker(text, match.start()):
             continue
         return True
     return False
@@ -200,6 +213,8 @@ def question_type(text: str, context: str = "") -> str:
     combined = f"{context} {text}"
     if re.search(r"[○Ⅹ]", combined) or re.search(r"O\s*/\s*X", combined, re.I):
         return "ox"
+    if (has_circled_options(text) or has_numeric_options(text)) and CHOICE_CUE_RE.search(combined):
+        return "choice"
     if has_blank_placeholders(combined):
         return "blank"
     if has_circled_options(text) or (
@@ -247,9 +262,11 @@ def is_group_parent_title(line: str) -> bool:
 
 
 def split_options(text: str) -> list[str]:
-    if has_blank_placeholders(text):
-        return []
-    matches = list(re.finditer(r"[①②③④⑤]", text))
+    matches = [
+        match
+        for match in re.finditer(rf"[{CIRCLED_MARKERS}]", text)
+        if not is_answer_key_marker(text, match.start())
+    ]
     if len(matches) < 2:
         matches = list(re.finditer(r"(?<!\d)(?:[1-9]|10)\)\s*", text))
         if len(matches) < 2:
@@ -430,7 +447,7 @@ def parse_questions(text: str) -> list[dict]:
         current["body"] = body if body else title
         current["text"] = full_text
         current["type"] = question_type(full_text, current.get("section", ""))
-        current["options"] = split_options(full_text)
+        current["options"] = split_options(full_text) if current["type"] == "choice" else []
         current.pop("starter", None)
         del current["parts"]
         questions.append(current)
@@ -617,6 +634,37 @@ def apply_display_labels(questions: list[dict]) -> None:
         used.add(candidate)
 
 
+def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
+    if source.path.name != "2023년도_제2차_총회_목사고시_헌법_문제_20230620_.pdf":
+        return
+
+    choice_instruction = "※ 한 가지를 고르는 문제입니다. ( ) 안에 정답의 번호를 쓰십시오."
+    by_label = {str(question.get("numberLabel")): question for question in questions}
+
+    q14 = by_label.get("14")
+    if q14:
+        for key in ("body", "text"):
+            q14[key] = re.sub(rf"\s*{re.escape(choice_instruction)}\s*", " ", q14.get(key, "")).strip()
+            q14[key] = re.sub(r"\s+", " ", q14[key]).strip()
+
+    q15 = by_label.get("15")
+    if q15:
+        q15["groupTitle"] = choice_instruction
+        q15["section"] = choice_instruction
+
+    for label in ("15", "16", "17", "18"):
+        question = by_label.get(label)
+        if not question:
+            continue
+        question["type"] = "choice"
+        question["options"] = split_options(question.get("text", ""))
+
+    for label in ("8", "19"):
+        question = by_label.get(label)
+        if question:
+            question["options"] = []
+
+
 def collect_sources() -> list[SourceFile]:
     manifest = json.loads((DOWNLOADS / "manifest.json").read_text(encoding="utf-8"))
     sources: list[SourceFile] = []
@@ -648,6 +696,7 @@ def main() -> None:
             parsed = parse_questions(text)
             candidates.append((parse_score(parsed), text, parsed))
         _, text, parsed = max(candidates, key=lambda item: item[0])
+        repair_known_document_questions(source, parsed)
         doc_id = re.sub(r"[^a-zA-Z0-9가-힣]+", "-", source.path.stem).strip("-")
         doc_questions = []
         documents.append(

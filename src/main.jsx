@@ -422,6 +422,7 @@ function Select({ label, value, onChange, children }) {
 
 function QuestionCard({ question, answer, updateAnswer, document, openSource }) {
   const prompt = normalizeQuestionText(question);
+  const groupPrompt = question.groupTitle && question.groupTitle !== question.title ? question.groupTitle : "";
 
   return (
     <article className="question-card">
@@ -433,12 +434,12 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource }) 
         <span>문제 {question.displayLabel || question.numberLabel || question.number}</span>
       </div>
 
-      {question.groupTitle && <div className="group-prompt">{question.groupTitle}</div>}
+      {groupPrompt && <div className="group-prompt">{groupPrompt}</div>}
 
       {question.title && (
         <h3 className="question-title">{question.title}</h3>
       )}
-      {question.body && question.body !== question.title && <p className="question-body">{prompt}</p>}
+      {prompt && question.body && question.body !== question.title && <p className="question-body">{prompt}</p>}
 
       {question.options?.length > 0 && (
         <div className="option-list">
