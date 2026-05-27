@@ -4,7 +4,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
-  ExternalLink,
+  Download,
   FileText,
   Flag,
   ListFilter,
@@ -100,6 +100,13 @@ function sourceUrl(document) {
 
 function fileExtension(fileName = "") {
   return fileName.split(".").pop()?.toLowerCase() || "";
+}
+
+function sourcePreviewUrl(document) {
+  if (!document) return "#";
+  return fileExtension(document.fileName) === "hwp"
+    ? encodeURI(`/hwp-html/${document.id}.html`)
+    : sourceUrl(document);
 }
 
 function App() {
@@ -496,7 +503,8 @@ function SourceModal({ document, onClose }) {
 
   const url = sourceUrl(document);
   const extension = fileExtension(document.fileName);
-  const canPreview = extension === "pdf";
+  const previewUrl = sourcePreviewUrl(document);
+  const canPreview = extension === "pdf" || extension === "hwp";
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -514,9 +522,6 @@ function SourceModal({ document, onClose }) {
             <p>{document.year || "미상"} · {document.session} · {document.subject} · {document.questionCount}문항</p>
           </div>
           <div className="source-modal-actions">
-            <a className="source-link" href={url} target="_blank" rel="noreferrer">
-              <ExternalLink size={17} /> 새 창
-            </a>
             <button className="icon-button" type="button" onClick={onClose} aria-label="원문 닫기">
               <X size={20} />
             </button>
@@ -524,13 +529,19 @@ function SourceModal({ document, onClose }) {
         </header>
 
         {canPreview ? (
-          <iframe className="source-frame" title={`${document.fileName} 원문`} src={url} />
+          <iframe className="source-frame" title={`${document.fileName} 원문`} src={previewUrl} />
         ) : (
           <div className="source-text-preview">
             <p>이 형식은 브라우저 안에서 직접 미리보기를 지원하지 않아 추출된 텍스트를 표시합니다.</p>
             <pre>{document.rawText}</pre>
           </div>
         )}
+
+        <footer className="source-modal-footer">
+          <a className="source-link" href={url} download={document.fileName}>
+            <Download size={17} /> 파일 다운로드
+          </a>
+        </footer>
       </section>
     </div>
   );

@@ -581,7 +581,7 @@ p {
 
 .source-modal {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(1120px, 100%);
   height: min(860px, calc(100vh - 48px));
   overflow: hidden;
@@ -655,6 +655,14 @@ p {
   font-size: 13px;
   line-height: 1.65;
   white-space: pre-wrap;
+}
+
+.source-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: #fbfcfd;
 }
 
 @media (max-width: 1050px) {
