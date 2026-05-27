@@ -673,6 +673,100 @@ def apply_display_labels(questions: list[dict]) -> None:
         used.add(candidate)
 
 
+STRUCTURED_ITEM_RE = re.compile(r"(?<!^)\s+((?:[2-9]|1[0-9]|20)\))")
+STRUCTURED_SPLIT_PATTERNS = [
+    re.compile(r"\s+1\)"),
+    re.compile(r"\s+(?=①(?!\s*\)))"),
+    re.compile(r"\s+(?=■\s*①)"),
+    re.compile(r"\s+(?=▶)"),
+    re.compile(r"\s+(?=-보기-)"),
+    re.compile(r"\s+(?=\* 보기 \*)"),
+    re.compile(r"\s+(?=“)"),
+    re.compile(r"\s+(?=본 교단 소속)"),
+    re.compile(r"\s+(?=전도목사인 )"),
+]
+
+
+def format_structured_body(text: str) -> str:
+    text = text.strip()
+    if not text:
+        return text
+
+    text = re.sub(r"\s+(?=▶)", "\n", text)
+    text = re.sub(r"\s+(?=※)", "\n", text)
+    text = re.sub(r"\s+(?=-보기-)", "\n", text)
+    text = re.sub(r"\s+(?=\* 보기 \*)", "\n", text)
+    text = re.sub(r"\s+정답:", "\n정답:", text)
+    text = re.sub(r"\s+(?=■\s*[①②③④⑤⑥⑦⑧⑨⑩])", "\n", text)
+    text = re.sub(r"(?<![\(（])\s+([①②③④⑤⑥⑦⑧⑨⑩])(?!\s*[\)①②③④⑤⑥⑦⑧⑨⑩](?:\s|$))", r"\n\1", text)
+    text = re.sub(r"(?<!,)" + STRUCTURED_ITEM_RE.pattern, r"\n\1", text)
+    text = re.sub(r"정답:\s*((?:[①②③④⑤⑥⑦⑧⑨⑩]\s*)+)", lambda match: "정답: " + " ".join(match.group(1).split()), text)
+    text = re.sub(r"\n{2,}", "\n", text)
+
+    formatted_lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if len(line) > 180 and "-보기-" in line:
+            line = re.sub(r",\s+", ",\n", line)
+        if len(line) > 180:
+            line = re.sub(r"(?<=[.!?])\s+(?=(?:그리고|인간이|그러므로|그렇다면|될 수|불가능|가능|너희가|본 교단|전도목사인|▶|질문))", "\n", line)
+            line = re.sub(r"(다\.|요\.|라\.|이다\.|한다\.)\s+(?=[가-힣“‘])", r"\1\n", line)
+        formatted_lines.extend(part.strip() for part in line.splitlines() if part.strip())
+    return "\n".join(formatted_lines).strip()
+
+
+def split_structured_prompt(text: str) -> tuple[str, str] | None:
+    if not text:
+        return None
+
+    matches = []
+    for pattern in STRUCTURED_SPLIT_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            matches.append(match)
+    if not matches:
+        return None
+
+    match = min(matches, key=lambda item: item.start())
+    title = text[: match.start()].strip()
+    body = text[match.start() :].strip()
+    if len(title) < 8 or len(body) < 4:
+        return None
+    return title, format_structured_body(body)
+
+
+def format_structured_non_choice_question(question: dict) -> None:
+    if question.get("type") in {"choice", "ox"}:
+        return
+
+    original_title = str(question.get("title", "")).strip()
+    original_body = str(question.get("body", "")).strip()
+    original_group = str(question.get("groupTitle", "")).strip()
+    if not original_title and not original_body:
+        return
+
+    title = original_title
+    body = original_body
+
+    if body and title and body == title:
+        split = split_structured_prompt(body)
+        if split:
+            title, body = split
+        else:
+            body = format_structured_body(body)
+    elif body:
+        body = format_structured_body(body)
+
+    if title and title != original_title:
+        title = format_structured_body(title)
+
+    question["title"] = title
+    question["body"] = body
+    if original_group in {original_title, original_body, ""}:
+        question["groupTitle"] = title
+    question["text"] = f"{title}\n{body}".strip() if body and body != title else title or body
+
+
 def normalize_manual_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s*\[(?:객관식|단답형|서술형|논술형)\].*$", "", text).strip()
@@ -1227,6 +1321,8 @@ def main() -> None:
             candidates.append((parse_score(parsed), text, parsed))
         _, text, parsed = max(candidates, key=lambda item: item[0])
         repair_known_document_questions(source, parsed)
+        for question in parsed:
+            format_structured_non_choice_question(question)
         doc_id = re.sub(r"[^a-zA-Z0-9가-힣]+", "-", source.path.stem).strip("-")
         doc_questions = []
         documents.append(
