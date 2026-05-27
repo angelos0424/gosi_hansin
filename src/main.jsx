@@ -139,7 +139,7 @@ function App() {
   }, [filteredQuestions, practiceSeed]);
 
   const activeQuestion = useMemo(() => {
-    return data.questions.find((q) => q.id === activeId) || practiceQuestions[0] || filteredQuestions[0];
+    return practiceQuestions.find((q) => q.id === activeId) || practiceQuestions[0] || filteredQuestions[0];
   }, [activeId, practiceQuestions, filteredQuestions]);
 
   const stats = useMemo(() => {
@@ -158,6 +158,11 @@ function App() {
     setActiveId(null);
   };
 
+  const refreshPracticeSet = () => {
+    setActiveId(null);
+    setPracticeSeed((n) => n + 1);
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -170,7 +175,7 @@ function App() {
             <p>2010-2026년 공개 기출문제를 연도와 과목별로 풀어보는 로컬 학습 사이트</p>
           </div>
         </div>
-        <button className="ghost-button" onClick={() => setPracticeSeed((n) => n + 1)}>
+        <button className="ghost-button" onClick={refreshPracticeSet}>
           <Shuffle size={17} /> 새 문제 세트
         </button>
       </header>
