@@ -14,7 +14,7 @@ OUT = ROOT / "src" / "questionData.json"
 HWP5TXT = Path("/Users/windows11/Library/Python/3.14/bin/hwp5txt")
 HWPJS = ROOT / "node_modules" / ".bin" / "hwpjs"
 MAX_GRP_LOOKAHEAD = 8
-CIRCLED_MARKERS = "①②③④⑤⑥⑦⑧⑨⑩"
+CIRCLED_MARKERS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 CHOICE_CUE_RE = re.compile(
     r"한\s*가지.*고르|정답의\s*번호|틀린|아닌|잘못|속하지\s*않|고르|골라|선택|"
     r"해당|어느\s*것|무엇입니까\?\s*\(\s*\)"
@@ -703,6 +703,38 @@ def repair_choice_from_numeric_options(question: dict) -> None:
     question["options"] = options
 
 
+def repair_choice_from_options(question: dict) -> None:
+    full_text = normalize_manual_text(question.get("text", ""))
+    options = [normalize_manual_text(option) for option in split_options(full_text)]
+    if not options:
+        return
+    marker = full_text.find(options[0])
+    title = normalize_manual_text(full_text[:marker]) if marker >= 0 else normalize_manual_text(question.get("title", ""))
+    body = " ".join(options)
+    question["groupTitle"] = title
+    question["title"] = title
+    question["body"] = body
+    question["text"] = normalize_manual_text(f"{title} {body}")
+    question["type"] = "choice"
+    question["options"] = options
+
+
+def repair_essay_prompt(question: dict, keep_body: bool = False) -> None:
+    title = normalize_manual_text(question.get("title", ""))
+    body = normalize_manual_text(question.get("body", ""))
+    if body and body != title and not keep_body:
+        title = normalize_manual_text(f"{title} {body}")
+        body = title
+    elif not body:
+        body = title
+    question["groupTitle"] = title
+    question["title"] = title
+    question["body"] = body
+    question["text"] = normalize_manual_text(f"{title} {body}") if keep_body and body != title else title
+    question["type"] = "essay"
+    question["options"] = []
+
+
 def repair_known_document_questions(source: SourceFile, questions: list[dict]) -> None:
     by_label = {str(question.get("numberLabel")): question for question in questions}
 
@@ -726,6 +758,40 @@ def repair_known_document_questions(source: SourceFile, questions: list[dict]) -
             question["text"] = title
             question["type"] = "essay"
             question["options"] = []
+
+    if source.path.name == "2011년도_제1차_총회_목사고시__교단헌법.pdf":
+        for label in ("1", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "15", "16", "17", "18", "19"):
+            question = by_label.get(label)
+            if question:
+                repair_choice_from_options(question)
+        for label in ("2", "14"):
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+        q20 = by_label.get("20")
+        if q20:
+            repair_essay_prompt(q20, keep_body=True)
+
+    if source.path.name == "2011년도_제1차_총회_목사고시__성경.pdf":
+        for question in questions:
+            repair_essay_prompt(question)
+
+    if source.path.name == "2011년도_제2차_총회_목사고시__교단헌법.pdf":
+        for label in ("3", "6", "9", "10", "11", "12", "14", "15", "16", "18", "19", "20"):
+            question = by_label.get(label)
+            if question:
+                repair_choice_from_options(question)
+        for label in ("1", "2", "4", "5", "7", "8", "13", "17"):
+            question = by_label.get(label)
+            if question:
+                repair_essay_prompt(question)
+
+    if source.path.name == "2011년도_제2차_총회_목사고시__성경.pdf":
+        for question in questions:
+            if str(question.get("numberLabel")) in {"6", "13"}:
+                repair_choice_from_options(question)
+            else:
+                repair_essay_prompt(question)
 
     if source.path.name == "2023년도_제2차_총회_목사고시_헌법_문제_20230620_.pdf":
         choice_instruction = "※ 한 가지를 고르는 문제입니다. ( ) 안에 정답의 번호를 쓰십시오."
