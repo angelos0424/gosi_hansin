@@ -208,6 +208,7 @@ function App() {
   const [sourceDocument, setSourceDocument] = useState(null);
   const [practiceSeed, setPracticeSeed] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [incompleteOnly, setIncompleteOnly] = useState(true);
   const {
     answers,
     updateAnswer,
@@ -264,6 +265,11 @@ function App() {
     });
   }, [filters, selectedDocumentId]);
 
+  const practiceCandidates = useMemo(() => {
+    if (!incompleteOnly) return filteredQuestions;
+    return filteredQuestions.filter((q) => !getQuestionAnswer(answers, q).done);
+  }, [answers, filteredQuestions, incompleteOnly]);
+
   const makeSeededRandom = (seed) => {
     let state = seed;
     return () => {
@@ -289,11 +295,11 @@ function App() {
 
   const practiceQuestions = useMemo(() => {
     if (selectedDocumentId) {
-      return filteredQuestions;
+      return practiceCandidates;
     }
 
-    const constitutionQuestions = filteredQuestions.filter((q) => q.subject === "교단헌법");
-    const bibleQuestions = filteredQuestions.filter((q) => q.subject === "성경");
+    const constitutionQuestions = practiceCandidates.filter((q) => q.subject === "교단헌법");
+    const bibleQuestions = practiceCandidates.filter((q) => q.subject === "성경");
     const target = {
       교단헌법: 20,
       성경: 10,
@@ -310,14 +316,14 @@ function App() {
     }
 
     const selectedIds = new Set(picked.map((q) => q.id));
-    const leftovers = filteredQuestions.filter((q) => !selectedIds.has(q.id));
+    const leftovers = practiceCandidates.filter((q) => !selectedIds.has(q.id));
     const extra = takeRandom(leftovers, 30 - picked.length, (seed * 9301 + 49297) % 233280);
     return [...picked, ...extra];
-  }, [filteredQuestions, practiceSeed, selectedDocumentId]);
+  }, [practiceCandidates, practiceSeed, selectedDocumentId]);
 
   const activeQuestion = useMemo(() => {
-    return practiceQuestions.find((q) => q.id === activeId) || practiceQuestions[0] || filteredQuestions[0];
-  }, [activeId, practiceQuestions, filteredQuestions]);
+    return practiceQuestions.find((q) => q.id === activeId) || practiceQuestions[0];
+  }, [activeId, practiceQuestions]);
 
   const stats = useMemo(() => {
     const completed = data.questions.filter((q) => getQuestionAnswer(answers, q).done).length;
@@ -403,7 +409,7 @@ function App() {
             <h2>원문 기반 문제 풀이</h2>
             <p>
               첨부 문서 64개에서 추출한 {stats.questions.toLocaleString()}개 문제를 객관식, 빈칸,
-              O/X, 서술형으로 분류했습니다. 답안은 브라우저에 자동 저장됩니다.
+              O/X, 서술형으로 분류했습니다. 답안은 서버에 자동 저장됩니다.
             </p>
           </div>
           <div className="metric-grid">
@@ -500,12 +506,25 @@ function App() {
               <h2>
                 {selectedDocument
                   ? `${selectedDocument.year || "미상"} ${selectedDocument.session} ${selectedDocument.subject} ${practiceQuestions.length}개`
-                  : `${filteredQuestions.length.toLocaleString()}개 중 ${practiceQuestions.length}개 풀이`}
+                  : `${practiceCandidates.length.toLocaleString()}개 중 ${practiceQuestions.length}개 풀이`}
               </h2>
             </div>
-            <button className="ghost-button small" onClick={resetAnswers}>
-              <RotateCcw size={16} /> 기록 초기화
-            </button>
+            <div className="panel-controls">
+              <button
+                aria-pressed={incompleteOnly}
+                className={`toggle-button ${incompleteOnly ? "active" : ""}`}
+                type="button"
+                onClick={() => {
+                  setIncompleteOnly((current) => !current);
+                  setActiveId(null);
+                }}
+              >
+                미완료만 보기
+              </button>
+              <button className="ghost-button small" onClick={resetAnswers}>
+                <RotateCcw size={16} /> 기록 초기화
+              </button>
+            </div>
           </div>
 
           <div className="question-layout">
@@ -538,7 +557,9 @@ function App() {
                 hasNext={activeQuestionIndex >= 0 && activeQuestionIndex < practiceQuestions.length - 1}
               />
             ) : (
-              <div className="empty-state">조건에 맞는 문제가 없습니다.</div>
+              <div className="empty-state">
+                {incompleteOnly ? "조건에 맞는 미완료 문제가 없습니다." : "조건에 맞는 문제가 없습니다."}
+              </div>
             )}
           </div>
         </section>

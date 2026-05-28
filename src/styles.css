@@ -510,6 +510,36 @@ p {
   margin-top: 4px;
 }
 
+.panel-controls {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.toggle-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0 13px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.toggle-button.active {
+  border-color: rgba(13, 138, 128, 0.35);
+  background: #e9f5f3;
+  color: var(--teal-dark);
+}
+
 .question-layout {
   display: grid;
   grid-template-columns: 110px minmax(0, 1fr);
@@ -934,6 +964,14 @@ p {
   .panel-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .panel-controls {
+    justify-content: stretch;
+  }
+
+  .panel-controls > button {
+    flex: 1;
   }
 
   .topbar-actions {
