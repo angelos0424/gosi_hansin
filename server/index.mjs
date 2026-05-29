@@ -37,6 +37,8 @@ const db = existsSync(dbPath)
   ? new SQL.Database(await fs.readFile(dbPath))
   : new SQL.Database();
 
+db.exec("PRAGMA foreign_keys = ON;");
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -55,14 +57,22 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_answers_answer_key
   ON answers(answer_key);
+`);
 
+if (tableExists("answer_votes") && !tableHasForeignKeys("answer_votes")) {
+  migrateAnswerVotesTable();
+}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS answer_votes (
     answer_key TEXT NOT NULL,
     answer_user_id TEXT NOT NULL,
     voter_user_id TEXT NOT NULL,
     vote INTEGER NOT NULL CHECK (vote IN (-1, 1)),
     updated_at INTEGER NOT NULL,
-    PRIMARY KEY (answer_key, answer_user_id, voter_user_id)
+    PRIMARY KEY (answer_key, answer_user_id, voter_user_id),
+    FOREIGN KEY (voter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (answer_user_id, answer_key) REFERENCES answers(user_id, answer_key) ON DELETE CASCADE
   );
 
   CREATE INDEX IF NOT EXISTS idx_answer_votes_lookup
@@ -70,6 +80,49 @@ db.exec(`
 `);
 
 let saveQueue = Promise.resolve();
+
+function tableExists(tableName) {
+  const stmt = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?");
+  stmt.bind([tableName]);
+  const exists = stmt.step();
+  stmt.free();
+  return exists;
+}
+
+function tableHasForeignKeys(tableName) {
+  const stmt = db.prepare(`PRAGMA foreign_key_list(${tableName})`);
+  let foreignKeyCount = 0;
+  while (stmt.step()) {
+    foreignKeyCount += 1;
+  }
+  stmt.free();
+  return foreignKeyCount >= 3;
+}
+
+function migrateAnswerVotesTable() {
+  db.exec(`
+    CREATE TABLE answer_votes_next (
+      answer_key TEXT NOT NULL,
+      answer_user_id TEXT NOT NULL,
+      voter_user_id TEXT NOT NULL,
+      vote INTEGER NOT NULL CHECK (vote IN (-1, 1)),
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (answer_key, answer_user_id, voter_user_id),
+      FOREIGN KEY (voter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (answer_user_id, answer_key) REFERENCES answers(user_id, answer_key) ON DELETE CASCADE
+    );
+
+    INSERT OR IGNORE INTO answer_votes_next (answer_key, answer_user_id, voter_user_id, vote, updated_at)
+    SELECT av.answer_key, av.answer_user_id, av.voter_user_id, av.vote, av.updated_at
+    FROM answer_votes av
+    JOIN users voter ON voter.id = av.voter_user_id
+    JOIN answers answer ON answer.user_id = av.answer_user_id AND answer.answer_key = av.answer_key
+    WHERE av.vote IN (-1, 1);
+
+    DROP TABLE answer_votes;
+    ALTER TABLE answer_votes_next RENAME TO answer_votes;
+  `);
+}
 
 function enqueueSave() {
   saveQueue = saveQueue.then(async () => {
@@ -170,37 +223,58 @@ function getAnswerRows(answerKey, currentUserId) {
   return rows;
 }
 
-function getVoteMaps(answerKey, voterUserId) {
-  const scoreStmt = db.prepare(
-    "SELECT answer_user_id, COALESCE(SUM(vote), 0) AS score FROM answer_votes WHERE answer_key = ? GROUP BY answer_user_id",
-  );
-  const scoreMap = new Map();
-  scoreStmt.bind([answerKey]);
-  while (scoreStmt.step()) {
-    const row = scoreStmt.getAsObject();
-    scoreMap.set(row.answer_user_id, Number(row.score || 0));
-  }
-  scoreStmt.free();
-
-  const myVoteStmt = db.prepare(
-    "SELECT answer_user_id, vote FROM answer_votes WHERE answer_key = ? AND voter_user_id = ?",
-  );
-  const myVoteMap = new Map();
-  myVoteStmt.bind([answerKey, voterUserId]);
-  while (myVoteStmt.step()) {
-    const row = myVoteStmt.getAsObject();
-    myVoteMap.set(row.answer_user_id, Number(row.vote || 0));
-  }
-  myVoteStmt.free();
-
-  return { scoreMap, myVoteMap };
-}
-
 function hasWrittenAnswer(questionType, payload) {
   if (questionType === "blank") {
     return Array.isArray(payload.blankAnswers) && payload.blankAnswers.some((value) => String(value || "").trim());
   }
   return Boolean(String(payload.note || "").trim());
+}
+
+function getWrittenAnswerRows(answerKey, currentUserId, questionType) {
+  const stmt = db.prepare(`
+    SELECT
+      a.user_id,
+      a.payload,
+      a.updated_at,
+      COALESCE(v_sum.score, 0) AS vote_score,
+      COALESCE(v_my.vote, 0) AS my_vote
+    FROM answers a
+    LEFT JOIN (
+      SELECT answer_user_id, SUM(vote) AS score
+      FROM answer_votes
+      WHERE answer_key = ?
+      GROUP BY answer_user_id
+    ) v_sum ON a.user_id = v_sum.answer_user_id
+    LEFT JOIN answer_votes v_my
+      ON v_my.answer_key = ?
+      AND v_my.answer_user_id = a.user_id
+      AND v_my.voter_user_id = ?
+    WHERE a.answer_key = ? AND a.user_id != ?
+  `);
+  const rows = [];
+  stmt.bind([answerKey, answerKey, currentUserId, answerKey, currentUserId]);
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    const payload = parsePayload(row.payload);
+    if (!hasWrittenAnswer(questionType, payload)) continue;
+    rows.push({
+      userId: row.user_id,
+      payload,
+      updatedAt: row.updated_at,
+      voteScore: Number(row.vote_score || 0),
+      myVote: Number(row.my_vote || 0),
+    });
+  }
+  stmt.free();
+  return rows.sort((a, b) => b.voteScore - a.voteScore || b.updatedAt - a.updatedAt);
+}
+
+function answerExists(userId, answerKey) {
+  const stmt = db.prepare("SELECT 1 FROM answers WHERE user_id = ? AND answer_key = ?");
+  stmt.bind([userId, answerKey]);
+  const exists = stmt.step();
+  stmt.free();
+  return exists;
 }
 
 async function handleAnswerSummary(req, res) {
@@ -223,8 +297,8 @@ async function handleAnswerSummary(req, res) {
 
     for (const row of rows) {
       const choice = row.payload.choice;
-      if (!choice) continue;
-      counts.set(choice, (counts.get(choice) || 0) + 1);
+      if (!choice || !counts.has(choice)) continue;
+      counts.set(choice, counts.get(choice) + 1);
       total += 1;
     }
 
@@ -239,15 +313,7 @@ async function handleAnswerSummary(req, res) {
     });
   }
 
-  const { scoreMap, myVoteMap } = getVoteMaps(answerKey, currentUserId);
-  const writtenRows = rows
-    .filter((row) => hasWrittenAnswer(questionType, row.payload))
-    .map((row) => ({
-      ...row,
-      voteScore: scoreMap.get(row.userId) || 0,
-      myVote: myVoteMap.get(row.userId) || 0,
-    }))
-    .sort((a, b) => b.voteScore - a.voteScore || b.updatedAt - a.updatedAt);
+  const writtenRows = getWrittenAnswerRows(answerKey, currentUserId, questionType);
 
   return json(res, 200, {
     mode: "list",
@@ -271,6 +337,9 @@ async function handleAnswerVote(req, res) {
   }
   if (voterUserId === targetUserId) {
     return json(res, 400, { error: "cannot vote on your own answer" });
+  }
+  if (nextVote !== 0 && !answerExists(targetUserId, answerKey)) {
+    return json(res, 404, { error: "target answer not found" });
   }
 
   ensureUser(voterUserId);

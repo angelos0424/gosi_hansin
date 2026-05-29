@@ -203,7 +203,7 @@ function getBlankAnswerCount(question) {
   const emptyCount = [...text.matchAll(emptyBlankPattern)].length;
   const numberedCount = [...text.matchAll(numberedBlankPattern)].length;
   const labeledCount = [...text.matchAll(labeledBlankPattern)].length;
-  return Math.max(emptyCount, numberedCount, labeledCount);
+  return emptyCount + numberedCount + labeledCount;
 }
 
 function getQuestionTitle(question) {
