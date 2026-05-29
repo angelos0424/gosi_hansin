@@ -52,6 +52,21 @@ db.exec(`
     PRIMARY KEY (user_id, answer_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE INDEX IF NOT EXISTS idx_answers_answer_key
+  ON answers(answer_key);
+
+  CREATE TABLE IF NOT EXISTS answer_votes (
+    answer_key TEXT NOT NULL,
+    answer_user_id TEXT NOT NULL,
+    voter_user_id TEXT NOT NULL,
+    vote INTEGER NOT NULL CHECK (vote IN (-1, 1)),
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (answer_key, answer_user_id, voter_user_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_answer_votes_lookup
+  ON answer_votes(answer_key, answer_user_id);
 `);
 
 let saveQueue = Promise.resolve();
@@ -127,6 +142,155 @@ function getAnswers(userId) {
   }
   stmt.free();
   return answers;
+}
+
+function parsePayload(payload) {
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return {};
+  }
+}
+
+function getAnswerRows(answerKey, currentUserId) {
+  const stmt = db.prepare(
+    "SELECT user_id, payload, updated_at FROM answers WHERE answer_key = ? AND user_id != ?",
+  );
+  const rows = [];
+  stmt.bind([answerKey, currentUserId]);
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    rows.push({
+      userId: row.user_id,
+      payload: parsePayload(row.payload),
+      updatedAt: row.updated_at,
+    });
+  }
+  stmt.free();
+  return rows;
+}
+
+function getVoteMaps(answerKey, voterUserId) {
+  const scoreStmt = db.prepare(
+    "SELECT answer_user_id, COALESCE(SUM(vote), 0) AS score FROM answer_votes WHERE answer_key = ? GROUP BY answer_user_id",
+  );
+  const scoreMap = new Map();
+  scoreStmt.bind([answerKey]);
+  while (scoreStmt.step()) {
+    const row = scoreStmt.getAsObject();
+    scoreMap.set(row.answer_user_id, Number(row.score || 0));
+  }
+  scoreStmt.free();
+
+  const myVoteStmt = db.prepare(
+    "SELECT answer_user_id, vote FROM answer_votes WHERE answer_key = ? AND voter_user_id = ?",
+  );
+  const myVoteMap = new Map();
+  myVoteStmt.bind([answerKey, voterUserId]);
+  while (myVoteStmt.step()) {
+    const row = myVoteStmt.getAsObject();
+    myVoteMap.set(row.answer_user_id, Number(row.vote || 0));
+  }
+  myVoteStmt.free();
+
+  return { scoreMap, myVoteMap };
+}
+
+function hasWrittenAnswer(questionType, payload) {
+  if (questionType === "blank") {
+    return Array.isArray(payload.blankAnswers) && payload.blankAnswers.some((value) => String(value || "").trim());
+  }
+  return Boolean(String(payload.note || "").trim());
+}
+
+async function handleAnswerSummary(req, res) {
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "method not allowed" });
+  }
+
+  const { answerKey, userId, questionType, options = [], limit = 10 } = await readJsonBody(req);
+  const currentUserId = validateUserId(userId);
+  if (!answerKey || !currentUserId || !questionType) {
+    return json(res, 400, { error: "answerKey, userId, and questionType are required" });
+  }
+
+  const rows = getAnswerRows(answerKey, currentUserId);
+
+  if (questionType === "choice" || questionType === "ox") {
+    const expectedOptions = questionType === "ox" ? ["O", "X"] : options;
+    const counts = new Map(expectedOptions.map((option) => [option, 0]));
+    let total = 0;
+
+    for (const row of rows) {
+      const choice = row.payload.choice;
+      if (!choice) continue;
+      counts.set(choice, (counts.get(choice) || 0) + 1);
+      total += 1;
+    }
+
+    return json(res, 200, {
+      mode: "aggregate",
+      total,
+      choices: [...counts.entries()].map(([value, count]) => ({
+        value,
+        count,
+        percentage: total ? Math.round((count / total) * 1000) / 10 : 0,
+      })),
+    });
+  }
+
+  const { scoreMap, myVoteMap } = getVoteMaps(answerKey, currentUserId);
+  const writtenRows = rows
+    .filter((row) => hasWrittenAnswer(questionType, row.payload))
+    .map((row) => ({
+      ...row,
+      voteScore: scoreMap.get(row.userId) || 0,
+      myVote: myVoteMap.get(row.userId) || 0,
+    }))
+    .sort((a, b) => b.voteScore - a.voteScore || b.updatedAt - a.updatedAt);
+
+  return json(res, 200, {
+    mode: "list",
+    total: writtenRows.length,
+    answers: writtenRows.slice(0, Math.max(1, Math.min(Number(limit) || 10, 30))),
+  });
+}
+
+async function handleAnswerVote(req, res) {
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "method not allowed" });
+  }
+
+  const { answerKey, answerUserId, userId, vote } = await readJsonBody(req);
+  const voterUserId = validateUserId(userId);
+  const targetUserId = validateUserId(answerUserId);
+  const nextVote = Number(vote);
+
+  if (!answerKey || !voterUserId || !targetUserId || ![-1, 0, 1].includes(nextVote)) {
+    return json(res, 400, { error: "answerKey, answerUserId, userId, and vote are required" });
+  }
+  if (voterUserId === targetUserId) {
+    return json(res, 400, { error: "cannot vote on your own answer" });
+  }
+
+  ensureUser(voterUserId);
+  if (nextVote === 0) {
+    db.run(
+      "DELETE FROM answer_votes WHERE answer_key = ? AND answer_user_id = ? AND voter_user_id = ?",
+      [answerKey, targetUserId, voterUserId],
+    );
+  } else {
+    db.run(
+      `INSERT INTO answer_votes (answer_key, answer_user_id, voter_user_id, vote, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(answer_key, answer_user_id, voter_user_id)
+       DO UPDATE SET vote = excluded.vote, updated_at = excluded.updated_at`,
+      [answerKey, targetUserId, voterUserId, nextVote, Date.now()],
+    );
+  }
+
+  await enqueueSave();
+  return json(res, 200, { ok: true });
 }
 
 async function handleProgress(req, res, userId) {
@@ -218,6 +382,14 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: "invalid user id" });
       }
       return await handleProgress(req, res, userId);
+    }
+
+    if (url.pathname === "/api/answers/summary") {
+      return await handleAnswerSummary(req, res);
+    }
+
+    if (url.pathname === "/api/answers/vote") {
+      return await handleAnswerVote(req, res);
     }
 
     if (url.pathname.startsWith("/api/")) {

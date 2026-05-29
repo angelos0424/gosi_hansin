@@ -13,6 +13,8 @@ import {
   RotateCcw,
   Search,
   Shuffle,
+  ThumbsDown,
+  ThumbsUp,
   X,
 } from "lucide-react";
 import data from "./questionData.json";
@@ -176,6 +178,44 @@ function normalizeQuestionText(question) {
   const marker = base.indexOf(question.options[0]);
   if (marker < 0) return base;
   return base.slice(0, marker).trim();
+}
+
+const emptyBlankPattern = /\(\s*\)/g;
+const numberedBlankPattern = /\(\s*[①②③④⑤⑥⑦⑧⑨⑩]\s*\)/g;
+const labeledBlankPattern = /\(\s*[A-Za-z가-힣]\s*\)/g;
+
+function numberBlankPlaceholders(text = "") {
+  let index = 0;
+  return text.replace(emptyBlankPattern, () => {
+    index += 1;
+    return `( ${index} )`;
+  });
+}
+
+function getBlankAnswerSource(question) {
+  const body = question.body || question.text || "";
+  if (body && body !== question.title) return body;
+  return question.title || body || "";
+}
+
+function getBlankAnswerCount(question) {
+  const text = getBlankAnswerSource(question);
+  const emptyCount = [...text.matchAll(emptyBlankPattern)].length;
+  const numberedCount = [...text.matchAll(numberedBlankPattern)].length;
+  const labeledCount = [...text.matchAll(labeledBlankPattern)].length;
+  return Math.max(emptyCount, numberedCount, labeledCount);
+}
+
+function getQuestionTitle(question) {
+  if (question.type !== "blank") return question.title;
+  if (getBlankAnswerSource(question) !== question.title) return question.title;
+  return numberBlankPlaceholders(question.title);
+}
+
+function getQuestionPrompt(question) {
+  const prompt = normalizeQuestionText(question);
+  if (question.type !== "blank") return prompt;
+  return numberBlankPlaceholders(prompt);
 }
 
 function documentDisplayName(fileName) {
@@ -555,6 +595,7 @@ function App() {
                 openSource={setSourceDocument}
                 onNext={goToNextQuestion}
                 hasNext={activeQuestionIndex >= 0 && activeQuestionIndex < practiceQuestions.length - 1}
+                userId={userId}
               />
             ) : (
               <div className="empty-state">
@@ -673,9 +714,69 @@ function Select({ label, value, onChange, options }) {
   );
 }
 
-function QuestionCard({ question, answer, updateAnswer, document, openSource, onNext, hasNext }) {
-  const prompt = normalizeQuestionText(question);
+function QuestionCard({ question, answer, updateAnswer, document, openSource, onNext, hasNext, userId }) {
+  const [answerSummary, setAnswerSummary] = useState(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryStatus, setSummaryStatus] = useState("idle");
+  const [summaryError, setSummaryError] = useState("");
+  const prompt = getQuestionPrompt(question);
+  const questionTitle = getQuestionTitle(question);
   const groupPrompt = question.groupTitle && question.groupTitle !== question.title ? question.groupTitle : "";
+  const answerKey = questionAnswerKey(question);
+  const blankAnswerCount = getBlankAnswerCount(question);
+  const canShowSummary = ["choice", "ox", "blank", "essay"].includes(question.type);
+
+  const loadAnswerSummary = async () => {
+    setSummaryStatus("loading");
+    setSummaryError("");
+    try {
+      const summary = await requestJson("/api/answers/summary", {
+        method: "POST",
+        body: JSON.stringify({
+          answerKey,
+          userId,
+          questionType: question.type,
+          options: question.options || [],
+          limit: 10,
+        }),
+      });
+      setAnswerSummary(summary);
+      setSummaryStatus("ready");
+    } catch {
+      setSummaryError("다른 사용자 답변을 불러오지 못했습니다.");
+      setSummaryStatus("error");
+    }
+  };
+
+  const toggleAnswerSummary = () => {
+    const nextOpen = !summaryOpen;
+    setSummaryOpen(nextOpen);
+    if (nextOpen) {
+      loadAnswerSummary();
+    }
+  };
+
+  const voteOnAnswer = async (answerUserId, vote) => {
+    const currentVote = answerSummary?.answers?.find((item) => item.userId === answerUserId)?.myVote || 0;
+    const nextVote = currentVote === vote ? 0 : vote;
+    try {
+      await requestJson("/api/answers/vote", {
+        method: "POST",
+        body: JSON.stringify({ answerKey, answerUserId, userId, vote: nextVote }),
+      });
+      await loadAnswerSummary();
+    } catch {
+      setSummaryError("투표를 저장하지 못했습니다.");
+      setSummaryStatus("error");
+    }
+  };
+
+  useEffect(() => {
+    setAnswerSummary(null);
+    setSummaryOpen(false);
+    setSummaryStatus("idle");
+    setSummaryError("");
+  }, [question.id]);
 
   return (
     <article className="question-card">
@@ -689,8 +790,8 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource, on
 
       {groupPrompt && <div className="group-prompt">{groupPrompt}</div>}
 
-      {question.title && (
-        <h3 className="question-title">{question.title}</h3>
+      {questionTitle && (
+        <h3 className="question-title">{questionTitle}</h3>
       )}
       {prompt && question.body && question.body !== question.title && <p className="question-body">{prompt}</p>}
 
@@ -722,14 +823,35 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource, on
         </div>
       )}
 
-      <label className="answer-box">
-        <span>{question.type === "essay" ? "서술 답안" : "내 풀이 메모"}</span>
-        <textarea
-          value={answer.note || ""}
-          onChange={(e) => updateAnswer({ note: e.target.value })}
-          placeholder="여기에 답안을 작성하세요. 정답지는 원문에 없어서 자기 채점용으로 저장됩니다."
-        />
-      </label>
+      {question.type === "blank" && blankAnswerCount > 0 ? (
+        <BlankAnswerInputs answer={answer} count={blankAnswerCount} updateAnswer={updateAnswer} />
+      ) : (
+        <label className="answer-box">
+          <span>{question.type === "essay" ? "서술 답안" : "내 풀이 메모"}</span>
+          <textarea
+            value={answer.note || ""}
+            onChange={(e) => updateAnswer({ note: e.target.value })}
+            placeholder="여기에 답안을 작성하세요. 정답지는 원문에 없어서 자기 채점용으로 저장됩니다."
+          />
+        </label>
+      )}
+
+      {canShowSummary && (
+        <div className="other-answer-section">
+          <button className="ghost-button small" type="button" onClick={toggleAnswerSummary}>
+            {summaryOpen ? "다른 사용자 답변 닫기" : "다른 사용자 답변 보기"}
+          </button>
+          {summaryOpen && (
+            <AnswerSummaryPanel
+              onVote={voteOnAnswer}
+              questionType={question.type}
+              status={summaryStatus}
+              summary={answerSummary}
+              error={summaryError}
+            />
+          )}
+        </div>
+      )}
 
       <div className="question-actions">
         <div className="action-row primary-row">
@@ -756,6 +878,120 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource, on
         <span>{question.fileName}</span>
       </footer>
     </article>
+  );
+}
+
+function BlankAnswerInputs({ answer, count, updateAnswer }) {
+  const values = Array.from({ length: count }, (_, index) => answer.blankAnswers?.[index] || "");
+
+  const updateValue = (index, value) => {
+    const next = [...values];
+    next[index] = value;
+    updateAnswer({ blankAnswers: next });
+  };
+
+  return (
+    <div className="answer-box blank-answer-box">
+      <span>정답 입력</span>
+      <div className="blank-answer-list">
+        {values.map((value, index) => (
+          <label className="blank-answer-row" key={index}>
+            <span>{index + 1}.</span>
+            <input
+              type="text"
+              value={value}
+              onChange={(event) => updateValue(index, event.target.value)}
+              placeholder={`${index + 1}번 빈칸 답`}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AnswerSummaryPanel({ error, onVote, questionType, status, summary }) {
+  if (status === "loading") {
+    return <div className="answer-summary-panel">불러오는 중입니다.</div>;
+  }
+
+  if (status === "error") {
+    return <div className="answer-summary-panel error">{error}</div>;
+  }
+
+  if (!summary) return null;
+
+  if (summary.mode === "aggregate") {
+    return (
+      <div className="answer-summary-panel">
+        <div className="summary-panel-header">
+          <strong>다른 사용자 답변</strong>
+          <span>{summary.total}명 응답</span>
+        </div>
+        <div className="aggregate-list">
+          {summary.choices.map((choice) => (
+            <div className="aggregate-row" key={choice.value}>
+              <span>{choice.value}</span>
+              <div className="aggregate-meter">
+                <i style={{ width: `${choice.percentage}%` }} />
+              </div>
+              <b>{choice.percentage}%</b>
+              <em>{choice.count}명</em>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="answer-summary-panel">
+      <div className="summary-panel-header">
+        <strong>다른 사용자 답변</strong>
+        <span>{summary.total}개 중 상위 {summary.answers.length}개</span>
+      </div>
+      {summary.answers.length === 0 ? (
+        <p className="summary-empty">아직 다른 사용자의 답변이 없습니다.</p>
+      ) : (
+        <div className="written-answer-list">
+          {summary.answers.map((item) => (
+            <article className="written-answer-row" key={item.userId}>
+              <div>
+                <b>{item.userId}</b>
+                {questionType === "blank" ? (
+                  <ol>
+                    {(item.payload.blankAnswers || []).map((value, index) => (
+                      <li key={index}>{value || "-"}</li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p>{item.payload.note}</p>
+                )}
+              </div>
+              <div className="vote-box">
+                <button
+                  className={item.myVote === 1 ? "active" : ""}
+                  type="button"
+                  onClick={() => onVote(item.userId, 1)}
+                  aria-label={`${item.userId} 답변 추천`}
+                >
+                  <ThumbsUp size={15} />
+                </button>
+                <strong>{item.voteScore}</strong>
+                <button
+                  className={item.myVote === -1 ? "active" : ""}
+                  type="button"
+                  onClick={() => onVote(item.userId, -1)}
+                  aria-label={`${item.userId} 답변 비추천`}
+                >
+                  <ThumbsDown size={15} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
