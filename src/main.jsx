@@ -244,11 +244,14 @@ function sourcePreviewUrl(document) {
 function App() {
   const [filters, setFilters] = useState(initialFilters);
   const [activeId, setActiveId] = useState(null);
+  const [collectionView, setCollectionView] = useState(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState(null);
   const [sourceDocument, setSourceDocument] = useState(null);
   const [practiceSeed, setPracticeSeed] = useState(0);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [incompleteOnly, setIncompleteOnly] = useState(true);
+  const [answerSnapshot, setAnswerSnapshot] = useState(null);
+  const practicePanelRef = useRef(null);
   const {
     answers,
     updateAnswer,
@@ -259,6 +262,12 @@ function App() {
     answerStatus,
     answerError,
   } = useStoredAnswers();
+
+  useEffect(() => {
+    if (answerStatus === "ready") {
+      setAnswerSnapshot(answers);
+    }
+  }, [answerStatus, userId]);
 
   const years = useMemo(
     () => [...new Set(data.questions.map((q) => q.year).filter(Boolean))].sort((a, b) => b - a),
@@ -307,8 +316,8 @@ function App() {
 
   const practiceCandidates = useMemo(() => {
     if (!incompleteOnly) return filteredQuestions;
-    return filteredQuestions.filter((q) => !getQuestionAnswer(answers, q).done);
-  }, [answers, filteredQuestions, incompleteOnly]);
+    return filteredQuestions.filter((q) => !getQuestionAnswer(answerSnapshot || answers, q).done);
+  }, [answerSnapshot, answers, filteredQuestions, incompleteOnly]);
 
   const makeSeededRandom = (seed) => {
     let state = seed;
@@ -376,25 +385,68 @@ function App() {
     };
   }, [answers]);
 
+  const collectionRows = useMemo(() => {
+    if (collectionView === "documents") return documentRows;
+    if (collectionView === "completed") {
+      return filteredQuestions.filter((q) => getQuestionAnswer(answers, q).done);
+    }
+    if (collectionView === "flagged") {
+      return filteredQuestions.filter((q) => getQuestionAnswer(answers, q).flagged);
+    }
+    return filteredQuestions;
+  }, [answers, collectionView, documentRows, filteredQuestions]);
+
+  const openCollectionView = (view) => {
+    setCollectionView(view);
+    setSelectedDocumentId(null);
+    setActiveId(null);
+    requestAnimationFrame(() => {
+      practicePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const closeCollectionView = () => {
+    setCollectionView(null);
+  };
+
   const updateFilter = (key, value) => {
+    setAnswerSnapshot(answers);
     setFilters((current) => ({ ...current, [key]: value }));
     setSelectedDocumentId(null);
     setActiveId(null);
   };
 
   const refreshPracticeSet = () => {
+    setAnswerSnapshot(answers);
+    setCollectionView(null);
     setSelectedDocumentId(null);
     setActiveId(null);
     setPracticeSeed((n) => n + 1);
   };
 
   const openDocumentQuestions = (doc) => {
+    setAnswerSnapshot(answers);
+    setCollectionView(null);
     setSelectedDocumentId(doc.id);
     setFilters((current) => ({
       ...current,
       type: "전체",
       query: "",
     }));
+    setActiveId(null);
+  };
+
+  const openQuestionFromList = (question) => {
+    setAnswerSnapshot(answers);
+    setCollectionView(null);
+    setIncompleteOnly(false);
+    setSelectedDocumentId(question.documentId);
+    setActiveId(question.id);
+  };
+
+  const resetPracticeAnswers = () => {
+    resetAnswers();
+    setAnswerSnapshot({});
     setActiveId(null);
   };
 
@@ -453,10 +505,34 @@ function App() {
             </p>
           </div>
           <div className="metric-grid">
-            <Metric label="문서" value={stats.documents} icon={<FileText size={18} />} />
-            <Metric label="문제" value={stats.questions.toLocaleString()} icon={<ListFilter size={18} />} />
-            <Metric label="완료" value={stats.completed} icon={<CheckCircle2 size={18} />} />
-            <Metric label="복습" value={stats.flagged} icon={<Flag size={18} />} />
+            <Metric
+              active={collectionView === "documents"}
+              icon={<FileText size={18} />}
+              label="문서"
+              onClick={() => openCollectionView("documents")}
+              value={stats.documents}
+            />
+            <Metric
+              active={collectionView === "questions"}
+              icon={<ListFilter size={18} />}
+              label="문제"
+              onClick={() => openCollectionView("questions")}
+              value={stats.questions.toLocaleString()}
+            />
+            <Metric
+              active={collectionView === "completed"}
+              icon={<CheckCircle2 size={18} />}
+              label="완료"
+              onClick={() => openCollectionView("completed")}
+              value={stats.completed}
+            />
+            <Metric
+              active={collectionView === "flagged"}
+              icon={<Flag size={18} />}
+              label="복습"
+              onClick={() => openCollectionView("flagged")}
+              value={stats.flagged}
+            />
           </div>
         </div>
       </section>
@@ -539,70 +615,85 @@ function App() {
           </div>
         </aside>
 
-        <section className="practice-panel">
-          <div className="panel-header">
-            <div>
-              <span className="eyeless-label">{selectedDocumentId ? "선택 문서" : "현재 세트"}</span>
-              <h2>
-                {selectedDocument
-                  ? `${selectedDocument.year || "미상"} ${selectedDocument.session} ${selectedDocument.subject} ${practiceQuestions.length}개`
-                  : `${practiceCandidates.length.toLocaleString()}개 중 ${practiceQuestions.length}개 풀이`}
-              </h2>
-            </div>
-            <div className="panel-controls">
-              <button
-                aria-pressed={incompleteOnly}
-                className={`toggle-button ${incompleteOnly ? "active" : ""}`}
-                type="button"
-                onClick={() => {
-                  setIncompleteOnly((current) => !current);
-                  setActiveId(null);
-                }}
-              >
-                미완료만 보기
-              </button>
-              <button className="ghost-button small" onClick={resetAnswers}>
-                <RotateCcw size={16} /> 기록 초기화
-              </button>
-            </div>
-          </div>
-
-          <div className="question-layout">
-            <nav className="question-rail" aria-label="문제 선택">
-              {practiceQuestions.map((q, index) => {
-                const answer = getQuestionAnswer(answers, q);
-                return (
-                <button
-                  key={q.id}
-                  className={`rail-item ${activeQuestion?.id === q.id ? "active" : ""} ${
-                    answer.done ? "done" : ""
-                  }`}
-                  onClick={() => setActiveId(q.id)}
-                >
-                  <span>{selectedDocumentId ? q.displayLabel || q.numberLabel || index + 1 : index + 1}</span>
-                  <small>{q.subject}</small>
-                </button>
-                );
-              })}
-            </nav>
-
-            {activeQuestion ? (
-              <QuestionCard
-                question={activeQuestion}
-                answer={getQuestionAnswer(answers, activeQuestion)}
-                updateAnswer={(patch) => updateAnswer(activeQuestion, patch)}
-                document={documentsById[activeQuestion.documentId]}
-                openSource={setSourceDocument}
-                onNext={goToNextQuestion}
-                hasNext={activeQuestionIndex >= 0 && activeQuestionIndex < practiceQuestions.length - 1}
-                userId={userId}
-              />
-            ) : (
-              <div className="empty-state">
-                {incompleteOnly ? "조건에 맞는 미완료 문제가 없습니다." : "조건에 맞는 문제가 없습니다."}
+        <section className="practice-panel" ref={practicePanelRef}>
+          {collectionView ? (
+            <CollectionView
+              answers={answers}
+              documentsById={documentsById}
+              onClose={closeCollectionView}
+              onOpenDocument={openDocumentQuestions}
+              onOpenQuestion={openQuestionFromList}
+              rows={collectionRows}
+              type={collectionView}
+            />
+          ) : (
+            <>
+              <div className="panel-header">
+                <div>
+                  <span className="eyeless-label">{selectedDocumentId ? "선택 문서" : "현재 세트"}</span>
+                  <h2>
+                    {selectedDocument
+                      ? `${selectedDocument.year || "미상"} ${selectedDocument.session} ${selectedDocument.subject} ${practiceQuestions.length}개`
+                      : `${practiceCandidates.length.toLocaleString()}개 중 ${practiceQuestions.length}개 풀이`}
+                  </h2>
+                </div>
+                <div className="panel-controls">
+                  <button
+                    aria-pressed={incompleteOnly}
+                    className={`toggle-button ${incompleteOnly ? "active" : ""}`}
+                    type="button"
+                    onClick={() => {
+                      setAnswerSnapshot(answers);
+                      setIncompleteOnly((current) => !current);
+                      setActiveId(null);
+                    }}
+                  >
+                    미완료만 보기
+                  </button>
+                  <button className="ghost-button small" onClick={resetPracticeAnswers}>
+                    <RotateCcw size={16} /> 기록 초기화
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
+
+              <div className="question-layout">
+                <nav className="question-rail" aria-label="문제 선택">
+                  {practiceQuestions.map((q, index) => {
+                    const answer = getQuestionAnswer(answers, q);
+                    return (
+                    <button
+                      key={q.id}
+                      className={`rail-item ${activeQuestion?.id === q.id ? "active" : ""} ${
+                        answer.done ? "done" : ""
+                      }`}
+                      onClick={() => setActiveId(q.id)}
+                    >
+                      <span>{selectedDocumentId ? q.displayLabel || q.numberLabel || index + 1 : index + 1}</span>
+                      <small>{q.subject}</small>
+                    </button>
+                    );
+                  })}
+                </nav>
+
+                {activeQuestion ? (
+                  <QuestionCard
+                    question={activeQuestion}
+                    answer={getQuestionAnswer(answers, activeQuestion)}
+                    updateAnswer={(patch) => updateAnswer(activeQuestion, patch)}
+                    document={documentsById[activeQuestion.documentId]}
+                    openSource={setSourceDocument}
+                    onNext={goToNextQuestion}
+                    hasNext={activeQuestionIndex >= 0 && activeQuestionIndex < practiceQuestions.length - 1}
+                    userId={userId}
+                  />
+                ) : (
+                  <div className="empty-state">
+                    {incompleteOnly ? "조건에 맞는 미완료 문제가 없습니다." : "조건에 맞는 문제가 없습니다."}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </section>
       </section>
 
@@ -611,12 +702,89 @@ function App() {
   );
 }
 
-function Metric({ label, value, icon }) {
+function Metric({ active, label, value, icon, onClick }) {
   return (
-    <div className="metric">
+    <button
+      aria-pressed={active}
+      className={`metric ${active ? "active" : ""}`}
+      onClick={onClick}
+      type="button"
+    >
       <span>{icon}</span>
       <strong>{value}</strong>
       <p>{label}</p>
+    </button>
+  );
+}
+
+const collectionLabels = {
+  documents: "문서",
+  questions: "문제",
+  completed: "완료",
+  flagged: "복습",
+};
+
+function CollectionView({ answers, documentsById, onClose, onOpenDocument, onOpenQuestion, rows, type }) {
+  const label = collectionLabels[type] || "목록";
+  const isDocumentList = type === "documents";
+
+  return (
+    <div className="collection-panel">
+      <div className="panel-header collection-header">
+        <div>
+          <span className="eyeless-label">목록</span>
+          <h2>{label} {rows.length.toLocaleString()}개</h2>
+          <p>왼쪽 문제 찾기 필터와 검색어가 적용된 결과입니다.</p>
+        </div>
+        <button className="ghost-button small" type="button" onClick={onClose}>
+          문제 풀이로 돌아가기
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="empty-state compact">조건에 맞는 {label} 내역이 없습니다.</div>
+      ) : (
+        <div className="collection-list">
+          {isDocumentList
+            ? rows.map((doc) => (
+                <button
+                  className="collection-row document-result"
+                  key={doc.id}
+                  type="button"
+                  onClick={() => onOpenDocument(doc)}
+                >
+                  <span className="collection-meta">
+                    {doc.year || "미상"} · {doc.session} · {doc.subject}
+                  </span>
+                  <strong>{documentDisplayName(doc.fileName)}</strong>
+                  <small>{doc.questionCount}문항</small>
+                </button>
+              ))
+            : rows.map((question) => {
+                const answer = getQuestionAnswer(answers, question);
+                const document = documentsById[question.documentId];
+                return (
+                  <button
+                    className="collection-row question-result"
+                    key={question.id}
+                    type="button"
+                    onClick={() => onOpenQuestion(question)}
+                  >
+                    <span className="collection-meta">
+                      {question.year} · {question.session} · {question.subject} · {typeLabels[question.type]} · 문제{" "}
+                      {question.displayLabel || question.numberLabel || question.number}
+                    </span>
+                    <strong>{question.title || normalizeQuestionText(question)}</strong>
+                    <small>
+                      {document ? documentDisplayName(document.fileName) : question.fileName}
+                      {answer.done && <b>완료</b>}
+                      {answer.flagged && <b>복습</b>}
+                    </small>
+                  </button>
+                );
+              })}
+        </div>
+      )}
     </div>
   );
 }
