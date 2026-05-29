@@ -262,10 +262,12 @@ function App() {
     answerStatus,
     answerError,
   } = useStoredAnswers();
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
 
   useEffect(() => {
     if (answerStatus === "ready") {
-      setAnswerSnapshot(answers);
+      setAnswerSnapshot(answersRef.current);
     }
   }, [answerStatus, userId]);
 
@@ -771,8 +773,8 @@ function CollectionView({ answers, documentsById, onClose, onOpenDocument, onOpe
                     onClick={() => onOpenQuestion(question)}
                   >
                     <span className="collection-meta">
-                      {question.year} · {question.session} · {question.subject} · {typeLabels[question.type]} · 문제{" "}
-                      {question.displayLabel || question.numberLabel || question.number}
+                      {question.year || "미상"} · {question.session} · {question.subject} · {typeLabels[question.type]} ·
+                      문제 {question.displayLabel || question.numberLabel || question.number}
                     </span>
                     <strong>{question.title || normalizeQuestionText(question)}</strong>
                     <small>

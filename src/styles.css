@@ -533,6 +533,10 @@ p {
   gap: 14px;
 }
 
+.empty-state.compact {
+  min-height: 180px;
+}
+
 .collection-header p {
   margin-top: 4px;
   color: var(--muted);
