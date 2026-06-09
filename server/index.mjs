@@ -456,10 +456,12 @@ async function handleAdminLogin(req, res) {
 
 function objectionExists(objectionId) {
   const stmt = db.prepare("SELECT 1 FROM objections WHERE id = ?");
-  stmt.bind([objectionId]);
-  const exists = stmt.step();
-  stmt.free();
-  return exists;
+  try {
+    stmt.bind([objectionId]);
+    return stmt.step();
+  } finally {
+    stmt.free();
+  }
 }
 
 function getObjectionRows() {

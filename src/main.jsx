@@ -1398,7 +1398,8 @@ const objectionStatusLabels = {
 
 function encodeBasicAuth(id, password) {
   const bytes = new TextEncoder().encode(`${id}:${password}`);
-  return btoa(String.fromCodePoint(...bytes));
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  return btoa(binary);
 }
 
 function formatDateTime(timestamp) {
