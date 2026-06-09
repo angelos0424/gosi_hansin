@@ -38,6 +38,7 @@ const initialFilters = {
 const ANSWER_STORAGE_KEY = "prok-study-answers-v2";
 const LEGACY_ANSWER_STORAGE_KEY = "prok-study-answers";
 const USER_ID_STORAGE_KEY = "prok-study-user-id";
+const ADMIN_AUTH_STORAGE_KEY = "prok-study-admin-auth";
 
 function questionAnswerKey(question) {
   const label = question.displayLabel || question.numberLabel || question.number || "";
@@ -242,6 +243,10 @@ function sourcePreviewUrl(document) {
 }
 
 function App() {
+  if (window.location.pathname === "/admin") {
+    return <AdminApp />;
+  }
+
   const [filters, setFilters] = useState(initialFilters);
   const [activeId, setActiveId] = useState(null);
   const [collectionView, setCollectionView] = useState(null);
@@ -886,6 +891,7 @@ function Select({ label, value, onChange, options }) {
 
 function QuestionCard({ question, answer, updateAnswer, document, openSource, onNext, hasNext, userId }) {
   const [answerSummary, setAnswerSummary] = useState(null);
+  const [objectionOpen, setObjectionOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryStatus, setSummaryStatus] = useState("idle");
   const [summaryError, setSummaryError] = useState("");
@@ -946,6 +952,7 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource, on
     setSummaryOpen(false);
     setSummaryStatus("idle");
     setSummaryError("");
+    setObjectionOpen(false);
   }, [question.id]);
 
   return (
@@ -1039,8 +1046,20 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource, on
           <button className="source-link" type="button" onClick={() => document && openSource(document)}>
             <FileText size={17} /> 원본
           </button>
+          <button className="ghost-button" type="button" onClick={() => setObjectionOpen(true)}>
+            <Flag size={17} /> 이의제기
+          </button>
         </div>
       </div>
+
+      <ObjectionModal
+        answerKey={answerKey}
+        document={document}
+        onClose={() => setObjectionOpen(false)}
+        open={objectionOpen}
+        question={question}
+        userId={userId}
+      />
 
       <footer className="question-source">
         <Clock3 size={15} />
@@ -1048,6 +1067,143 @@ function QuestionCard({ question, answer, updateAnswer, document, openSource, on
         <span>{question.fileName}</span>
       </footer>
     </article>
+  );
+}
+
+function QuestionReadOnlyDetails({ document, question }) {
+  return (
+    <div className="readonly-details">
+      <label>
+        <span>연도</span>
+        <input readOnly value={question.year || "미상"} />
+      </label>
+      <label>
+        <span>회차</span>
+        <input readOnly value={question.session || "미상"} />
+      </label>
+      <label>
+        <span>과목</span>
+        <input readOnly value={question.subject || "미상"} />
+      </label>
+      <label>
+        <span>유형</span>
+        <input readOnly value={typeLabels[question.type] || question.type || "미상"} />
+      </label>
+      <label>
+        <span>문제 번호</span>
+        <input readOnly value={question.displayLabel || question.numberLabel || question.number || "미상"} />
+      </label>
+      <label className="wide">
+        <span>원문</span>
+        <input readOnly value={document ? documentDisplayName(document.fileName) : question.fileName || "미상"} />
+      </label>
+    </div>
+  );
+}
+
+function ObjectionModal({ answerKey, document, onClose, open, question, userId }) {
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (open) {
+      setMessage("");
+      setStatus("idle");
+      setError("");
+    }
+  }, [open, question.id]);
+
+  if (!open) return null;
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const trimmed = message.trim();
+    if (!trimmed) {
+      setError("이의제기 내용을 입력하세요.");
+      return;
+    }
+
+    setStatus("loading");
+    setError("");
+    try {
+      await requestJson("/api/objections", {
+        method: "POST",
+        body: JSON.stringify({
+          userId,
+          answerKey,
+          questionId: question.id,
+          question: {
+            id: question.id,
+            year: question.year,
+            session: question.session,
+            subject: question.subject,
+            type: question.type,
+            typeLabel: typeLabels[question.type] || question.type,
+            number: question.displayLabel || question.numberLabel || question.number,
+            title: getQuestionTitle(question),
+            body: getQuestionPrompt(question),
+            fileName: question.fileName,
+            sourceTitle: question.sourceTitle,
+          },
+          message: trimmed,
+        }),
+      });
+      setStatus("done");
+      setMessage("");
+    } catch {
+      setStatus("idle");
+      setError("이의제기를 저장하지 못했습니다. 잠시 후 다시 시도하세요.");
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="objection-modal" role="dialog" aria-modal="true" aria-labelledby="objection-modal-title">
+        <header className="source-modal-header">
+          <div>
+            <span className="eyeless-label">문제 이의제기</span>
+            <h2 id="objection-modal-title">선택한 문제 정보 확인</h2>
+            <p>상단 정보는 수정할 수 없으며, 하단에 이의제기 내용을 작성합니다.</p>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="이의제기 닫기">
+            <X size={20} />
+          </button>
+        </header>
+
+        <form className="objection-form" onSubmit={submit}>
+          <QuestionReadOnlyDetails document={document} question={question} />
+          <label className="answer-box objection-textarea">
+            <span>이의제기 내용</span>
+            <textarea
+              autoFocus
+              maxLength={4000}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="문제 오류, 분류 오류, 원문 대조가 필요한 부분 등을 구체적으로 적어주세요."
+              readOnly={status === "done"}
+              value={message}
+            />
+          </label>
+          {error && <p className="login-error">{error}</p>}
+          {status === "done" && <p className="success-alert">이의제기가 접수되었습니다.</p>}
+          <div className="modal-action-row">
+            <button className="ghost-button" type="button" onClick={onClose}>닫기</button>
+            <button className="primary-button" disabled={status === "loading" || status === "done"} type="submit">
+              {status === "loading" ? "접수 중" : "이의제기 접수"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -1231,6 +1387,226 @@ function SourceModal({ document, onClose }) {
         </footer>
       </section>
     </div>
+  );
+}
+
+const objectionStatusLabels = {
+  new: "new",
+  progress: "progress",
+  done: "done",
+};
+
+function formatDateTime(timestamp) {
+  if (!timestamp) return "-";
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
+}
+
+function AdminApp() {
+  const [auth, setAuth] = useState(() => localStorage.getItem(ADMIN_AUTH_STORAGE_KEY) || "");
+  const [objections, setObjections] = useState([]);
+  const [status, setStatus] = useState(auth ? "loading" : "signed-out");
+  const [error, setError] = useState("");
+
+  const authHeaders = auth ? { authorization: `Basic ${auth}` } : {};
+
+  const loadObjections = async (nextAuth = auth) => {
+    setStatus("loading");
+    setError("");
+    try {
+      const body = await requestJson("/api/admin/objections", {
+        headers: { authorization: `Basic ${nextAuth}` },
+      });
+      setObjections(body.objections || []);
+      setStatus("ready");
+    } catch {
+      localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+      setAuth("");
+      setStatus("signed-out");
+      setError("관리자 로그인이 필요합니다.");
+    }
+  };
+
+  useEffect(() => {
+    if (auth) loadObjections(auth);
+  }, []);
+
+  const login = async (id, password) => {
+    setStatus("loading");
+    setError("");
+    try {
+      await requestJson("/api/admin/login", {
+        method: "POST",
+        body: JSON.stringify({ id, password }),
+      });
+      const nextAuth = btoa(`${id}:${password}`);
+      localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, nextAuth);
+      setAuth(nextAuth);
+      await loadObjections(nextAuth);
+    } catch {
+      setStatus("signed-out");
+      setError("관리자 ID 또는 비밀번호가 올바르지 않습니다.");
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+    setAuth("");
+    setObjections([]);
+    setStatus("signed-out");
+  };
+
+  const updateStatus = async (id, nextStatus) => {
+    const before = objections;
+    setObjections((items) =>
+      items.map((item) => (item.id === id ? { ...item, status: nextStatus, updatedAt: Date.now() } : item)),
+    );
+    try {
+      await requestJson(`/api/admin/objections/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: authHeaders,
+        body: JSON.stringify({ status: nextStatus }),
+      });
+    } catch {
+      setObjections(before);
+      setError("처리 상태를 저장하지 못했습니다.");
+    }
+  };
+
+  const counts = objections.reduce(
+    (acc, item) => ({ ...acc, [item.status]: (acc[item.status] || 0) + 1 }),
+    { new: 0, progress: 0, done: 0 },
+  );
+
+  if (!auth) {
+    return <AdminLoginScreen error={error} loading={status === "loading"} onLogin={login} />;
+  }
+
+  return (
+    <main className="app-shell admin-shell">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark"><BookOpen size={22} /></span>
+          <div>
+            <h1>관리자 페이지</h1>
+            <p>문제 이의제기 접수 내용을 확인하고 처리 상태를 관리합니다.</p>
+          </div>
+        </div>
+        <div className="topbar-actions">
+          <a className="ghost-button" href="/">문제 풀이로 이동</a>
+          <button className="ghost-button" type="button" onClick={() => loadObjections(auth)} disabled={status === "loading"}>새로고침</button>
+          <button className="ghost-button" type="button" onClick={logout}>로그아웃</button>
+        </div>
+      </header>
+
+      {error && <div className="sync-alert">{error}</div>}
+
+      <section className="summary admin-summary">
+        <div className="summary-copy">
+          <h2>이의제기 {objections.length.toLocaleString()}건</h2>
+          <p>초기 관리자 계정은 admin / admin 입니다. 운영 환경에서는 ADMIN_ID, ADMIN_PASSWORD 환경변수로 변경할 수 있습니다.</p>
+        </div>
+        <div className="metric-grid status-metrics">
+          {Object.entries(objectionStatusLabels).map(([key, label]) => (
+            <div className={`metric status-${key}`} key={key}>
+              <strong>{counts[key] || 0}</strong>
+              <p>{label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="practice-panel admin-panel">
+        {status === "loading" ? (
+          <div className="empty-state compact">이의제기를 불러오는 중입니다.</div>
+        ) : objections.length === 0 ? (
+          <div className="empty-state compact">접수된 이의제기가 없습니다.</div>
+        ) : (
+          <div className="objection-list">
+            {objections.map((item) => (
+              <AdminObjectionCard item={item} key={item.id} onStatusChange={updateStatus} />
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function AdminLoginScreen({ error, loading, onLogin }) {
+  const [id, setId] = useState("admin");
+  const [password, setPassword] = useState("admin");
+
+  const submit = (event) => {
+    event.preventDefault();
+    onLogin(id, password);
+  };
+
+  return (
+    <main className="login-shell">
+      <form className="login-card" onSubmit={submit}>
+        <span className="brand-mark"><BookOpen size={22} /></span>
+        <h1>관리자 로그인</h1>
+        <p>/admin 페이지는 관리자 로그인 후 이의제기 처리 상태를 관리할 수 있습니다.</p>
+        <label className="login-field">
+          <span>관리자 ID</span>
+          <input autoFocus disabled={loading} onChange={(event) => setId(event.target.value)} value={id} />
+        </label>
+        <label className="login-field">
+          <span>비밀번호</span>
+          <input disabled={loading} onChange={(event) => setPassword(event.target.value)} type="password" value={password} />
+        </label>
+        {error && <p className="login-error">{error}</p>}
+        <button className="primary-button login-button" disabled={loading} type="submit">
+          {loading ? "확인 중" : "로그인"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+function AdminObjectionCard({ item, onStatusChange }) {
+  const q = item.question || {};
+  return (
+    <article className={`admin-objection-card status-${item.status}`}>
+      <header>
+        <div>
+          <div className="question-meta">
+            <span>{q.year || "미상"}</span>
+            <span>{q.session || "미상"}</span>
+            <span>{q.subject || "미상"}</span>
+            <span>{q.typeLabel || typeLabels[q.type] || q.type || "유형 미상"}</span>
+            <span>문제 {q.number || "미상"}</span>
+          </div>
+          <h2>{q.title || "제목 없음"}</h2>
+          <p className="admin-card-meta">작성자 {item.userId} · 접수 {formatDateTime(item.createdAt)} · 수정 {formatDateTime(item.updatedAt)}</p>
+        </div>
+        <div className="status-button-group" role="group" aria-label="처리 상태 변경">
+          {Object.keys(objectionStatusLabels).map((status) => (
+            <button
+              className={item.status === status ? "active" : ""}
+              key={status}
+              type="button"
+              onClick={() => onStatusChange(item.id, status)}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+      </header>
+      {q.body && <p className="admin-question-body">{q.body}</p>}
+      <div className="admin-objection-message">
+        <strong>이의제기 내용</strong>
+        <p>{item.message}</p>
+      </div>
+      <footer>
+        <span>{q.sourceTitle}</span>
+        <span>{q.fileName}</span>
+        <code>{item.answerKey}</code>
+      </footer>
+    </article>
   );
 }
 

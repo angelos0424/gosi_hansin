@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import http from "node:http";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -12,6 +13,8 @@ const dataDir = process.env.DATA_DIR || path.join(rootDir, ".data");
 const dbPath = path.join(dataDir, "progress.sqlite");
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "0.0.0.0";
+const adminId = process.env.ADMIN_ID || "admin";
+const adminPassword = process.env.ADMIN_PASSWORD || "admin";
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -57,6 +60,22 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_answers_answer_key
   ON answers(answer_key);
+
+  CREATE TABLE IF NOT EXISTS objections (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    answer_key TEXT NOT NULL,
+    question_id TEXT NOT NULL,
+    question_payload TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('new', 'progress', 'done')),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_objections_status
+  ON objections(status, created_at DESC);
 `);
 
 if (tableExists("answer_votes") && !tableHasForeignKeys("answer_votes")) {
@@ -158,6 +177,32 @@ function validateUserId(rawUserId) {
     return null;
   }
   return userId;
+}
+
+function isAdminRequest(req) {
+  const authorization = req.headers.authorization || "";
+  const [scheme, encoded] = authorization.split(" ");
+  if (scheme !== "Basic" || !encoded) return false;
+
+  try {
+    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    const separator = decoded.indexOf(":");
+    if (separator < 0) return false;
+    const id = decoded.slice(0, separator);
+    const password = decoded.slice(separator + 1);
+    return id === adminId && password === adminPassword;
+  } catch {
+    return false;
+  }
+}
+
+function requireAdmin(req, res) {
+  if (isAdminRequest(req)) return true;
+  return json(res, 401, { error: "admin login required" });
+}
+
+function validateObjectionStatus(status) {
+  return ["new", "progress", "done"].includes(status) ? status : null;
 }
 
 function ensureUser(userId) {
@@ -362,6 +407,94 @@ async function handleAnswerVote(req, res) {
   return json(res, 200, { ok: true });
 }
 
+async function handleObjections(req, res) {
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "method not allowed" });
+  }
+
+  const { userId: rawUserId, answerKey, questionId, question, message } = await readJsonBody(req);
+  const userId = validateUserId(rawUserId);
+  const trimmedMessage = String(message || "").trim();
+  const safeQuestion = question && typeof question === "object" && !Array.isArray(question) ? question : null;
+
+  if (!userId || !answerKey || !questionId || !safeQuestion || !trimmedMessage) {
+    return json(res, 400, { error: "userId, answerKey, questionId, question, and message are required" });
+  }
+  if (trimmedMessage.length > 4000) {
+    return json(res, 400, { error: "message is too long" });
+  }
+
+  ensureUser(userId);
+  const now = Date.now();
+  const id = crypto.randomUUID();
+  db.run(
+    `INSERT INTO objections (id, user_id, answer_key, question_id, question_payload, message, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?)`,
+    [id, userId, String(answerKey), String(questionId), JSON.stringify(safeQuestion), trimmedMessage, now, now],
+  );
+  await enqueueSave();
+  return json(res, 201, { ok: true, objection: { id, status: "new", createdAt: now } });
+}
+
+async function handleAdminLogin(req, res) {
+  if (req.method !== "POST") {
+    return json(res, 405, { error: "method not allowed" });
+  }
+
+  const { id, password } = await readJsonBody(req);
+  if (id === adminId && password === adminPassword) {
+    return json(res, 200, { ok: true });
+  }
+  return json(res, 401, { error: "invalid admin credentials" });
+}
+
+function getObjectionRows() {
+  const stmt = db.prepare(`
+    SELECT id, user_id, answer_key, question_id, question_payload, message, status, created_at, updated_at
+    FROM objections
+    ORDER BY created_at DESC
+  `);
+  const rows = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    rows.push({
+      id: row.id,
+      userId: row.user_id,
+      answerKey: row.answer_key,
+      questionId: row.question_id,
+      question: parsePayload(row.question_payload),
+      message: row.message,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    });
+  }
+  stmt.free();
+  return rows;
+}
+
+async function handleAdminObjections(req, res, objectionId = "") {
+  if (!requireAdmin(req, res)) return undefined;
+
+  if (req.method === "GET" && !objectionId) {
+    return json(res, 200, { objections: getObjectionRows() });
+  }
+
+  if (req.method === "PATCH" && objectionId) {
+    const { status } = await readJsonBody(req);
+    const nextStatus = validateObjectionStatus(status);
+    if (!nextStatus) {
+      return json(res, 400, { error: "status must be new, progress, or done" });
+    }
+
+    db.run("UPDATE objections SET status = ?, updated_at = ? WHERE id = ?", [nextStatus, Date.now(), objectionId]);
+    await enqueueSave();
+    return json(res, 200, { ok: true });
+  }
+
+  return json(res, 405, { error: "method not allowed" });
+}
+
 async function handleProgress(req, res, userId) {
   if (req.method === "GET") {
     ensureUser(userId);
@@ -459,6 +592,19 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/answers/vote") {
       return await handleAnswerVote(req, res);
+    }
+
+    if (url.pathname === "/api/objections") {
+      return await handleObjections(req, res);
+    }
+
+    if (url.pathname === "/api/admin/login") {
+      return await handleAdminLogin(req, res);
+    }
+
+    const adminObjectionMatch = url.pathname.match(/^\/api\/admin\/objections(?:\/([^/]+))?$/);
+    if (adminObjectionMatch) {
+      return await handleAdminObjections(req, res, adminObjectionMatch[1] || "");
     }
 
     if (url.pathname.startsWith("/api/")) {
