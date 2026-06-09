@@ -1322,6 +1322,8 @@ function AnswerSummaryPanel({ error, onVote, questionType, status, summary }) {
 }
 
 function SourceModal({ document, onClose }) {
+  const [usesMobilePdfFallback, setUsesMobilePdfFallback] = useState(false);
+
   useEffect(() => {
     if (!document) return undefined;
 
@@ -1335,12 +1337,26 @@ function SourceModal({ document, onClose }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [document, onClose]);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 760px), (pointer: coarse)");
+    const updateMobilePdfFallback = () => setUsesMobilePdfFallback(mediaQuery.matches);
+
+    updateMobilePdfFallback();
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", updateMobilePdfFallback);
+      return () => mediaQuery.removeEventListener("change", updateMobilePdfFallback);
+    }
+    mediaQuery.addListener(updateMobilePdfFallback);
+    return () => mediaQuery.removeListener(updateMobilePdfFallback);
+  }, []);
+
   if (!document) return null;
 
   const url = sourceUrl(document);
   const extension = fileExtension(document.fileName);
   const previewUrl = sourcePreviewUrl(document);
-  const canPreview = extension === "pdf" || extension === "hwp";
+  const isMobilePdf = extension === "pdf" && usesMobilePdfFallback;
+  const canPreview = (extension === "pdf" || extension === "hwp") && !isMobilePdf;
 
   return (
     <div
@@ -1373,6 +1389,22 @@ function SourceModal({ document, onClose }) {
 
         {canPreview ? (
           <iframe className="source-frame" title={`${document.fileName} 원문`} src={previewUrl} />
+        ) : isMobilePdf ? (
+          <div className="source-text-preview mobile-pdf-preview">
+            <div className="mobile-pdf-notice">
+              <strong>모바일에서는 PDF가 바로 표시되지 않을 수 있습니다.</strong>
+              <p>브라우저 내장 PDF 뷰어 대신 추출된 원문 텍스트를 먼저 보여드립니다. 원본 PDF는 새 탭에서 열거나 파일로 받을 수 있습니다.</p>
+              <div className="mobile-pdf-actions">
+                <a className="source-link" href={url} target="_blank" rel="noreferrer">
+                  <FileText size={17} /> 새 탭에서 PDF 열기
+                </a>
+                <a className="source-link" href={url} download={document.fileName}>
+                  <Download size={17} /> 파일 다운로드
+                </a>
+              </div>
+            </div>
+            <pre>{document.rawText}</pre>
+          </div>
         ) : (
           <div className="source-text-preview">
             <p>이 형식은 브라우저 안에서 직접 미리보기를 지원하지 않아 추출된 텍스트를 표시합니다.</p>
@@ -1380,11 +1412,13 @@ function SourceModal({ document, onClose }) {
           </div>
         )}
 
-        <footer className="source-modal-footer">
-          <a className="source-link" href={url} download={document.fileName}>
-            <Download size={17} /> 파일 다운로드
-          </a>
-        </footer>
+        {!isMobilePdf && (
+          <footer className="source-modal-footer">
+            <a className="source-link" href={url} download={document.fileName}>
+              <Download size={17} /> 파일 다운로드
+            </a>
+          </footer>
+        )}
       </section>
     </div>
   );

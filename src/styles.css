@@ -1177,6 +1177,43 @@ p {
   font-size: 13px;
 }
 
+.mobile-pdf-preview {
+  display: grid;
+  gap: 14px;
+}
+
+.mobile-pdf-notice {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(13, 138, 128, 0.22);
+  border-radius: var(--radius);
+  background: #eef8f6;
+  padding: 14px;
+}
+
+.mobile-pdf-notice strong {
+  color: var(--teal-dark);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.mobile-pdf-notice p {
+  color: #40505a;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mobile-pdf-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mobile-pdf-actions .source-link {
+  justify-content: center;
+  width: 100%;
+}
+
 .source-text-preview pre {
   margin: 0;
   padding: 16px;
