@@ -1394,3 +1394,248 @@ p {
     grid-template-columns: 1fr;
   }
 }
+
+.success-alert {
+  border: 1px solid rgba(13, 138, 128, 0.24);
+  border-radius: 8px;
+  background: #e9f5f3;
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.objection-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(17, 25, 31, 0.28);
+}
+
+.objection-form {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.readonly-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readonly-details label {
+  display: grid;
+  gap: 6px;
+}
+
+.readonly-details .wide {
+  grid-column: 1 / -1;
+}
+
+.readonly-details span,
+.objection-textarea > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.readonly-details input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f4f7f8;
+  color: #40505a;
+  padding: 0 12px;
+}
+
+.objection-textarea {
+  margin-top: 0;
+}
+
+.objection-textarea textarea {
+  min-height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+}
+
+.objection-textarea textarea:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(13, 138, 128, 0.12);
+}
+
+.modal-action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.admin-shell {
+  gap: 18px;
+}
+
+.admin-summary {
+  margin-bottom: 0;
+}
+
+.status-metrics {
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+}
+
+.status-new {
+  border-color: rgba(56, 103, 200, 0.34);
+  background: #eef4ff;
+}
+
+.status-progress {
+  border-color: rgba(185, 137, 21, 0.38);
+  background: #fff8e5;
+}
+
+.status-done {
+  border-color: rgba(13, 138, 128, 0.34);
+  background: #e9f5f3;
+}
+
+.admin-panel {
+  display: block;
+}
+
+.objection-list {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-objection-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+  padding: 16px;
+}
+
+.admin-objection-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-objection-card h2 {
+  margin-top: 8px;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.admin-card-meta,
+.admin-objection-card footer {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-card-meta {
+  margin-top: 6px;
+}
+
+.status-button-group {
+  display: inline-flex;
+  align-self: start;
+  overflow: hidden;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.status-button-group button {
+  min-height: 36px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: #40505a;
+  cursor: pointer;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.status-button-group button:first-child {
+  border-left: 0;
+}
+
+.status-button-group button.active {
+  background: var(--teal);
+  color: #fff;
+}
+
+.admin-question-body {
+  border-left: 4px solid var(--blue);
+  background: #f4f7fb;
+  color: #253341;
+  line-height: 1.65;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+}
+
+.admin-objection-message {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.admin-objection-message strong {
+  color: #40505a;
+  font-size: 13px;
+}
+
+.admin-objection-message p {
+  color: #253341;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.admin-objection-card footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.admin-objection-card code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .readonly-details {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-action-row,
+  .admin-objection-card > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .modal-action-row > button,
+  .status-button-group {
+    width: 100%;
+  }
+
+  .status-button-group button {
+    flex: 1;
+  }
+}
