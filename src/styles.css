@@ -1205,6 +1205,7 @@ p {
 
 .mobile-pdf-actions {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 8px;
   margin-top: 4px;
 }
@@ -1241,6 +1242,35 @@ p {
   font-size: 13px;
 }
 
+.pdfjs-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdfjs-controls button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: #40505a;
+  cursor: pointer;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.pdfjs-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pdfjs-controls span {
+  min-width: 44px;
+  text-align: center;
+  font-weight: 850;
+}
+
 .pdfjs-state {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1256,12 +1286,6 @@ p {
   border-color: rgba(204, 80, 67, 0.28);
   background: #fff2ef;
   color: #9c3f35;
-}
-
-.pdf-pages {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
 }
 
 .pdf-page {
