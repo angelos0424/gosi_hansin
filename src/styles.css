@@ -1177,6 +1177,153 @@ p {
   font-size: 13px;
 }
 
+.mobile-pdf-preview {
+  display: grid;
+  gap: 14px;
+}
+
+.mobile-pdf-notice {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(13, 138, 128, 0.22);
+  border-radius: var(--radius);
+  background: #eef8f6;
+  padding: 14px;
+}
+
+.mobile-pdf-notice strong {
+  color: var(--teal-dark);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.mobile-pdf-notice p {
+  color: #40505a;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mobile-pdf-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mobile-pdf-actions .source-link {
+  justify-content: center;
+  width: 100%;
+}
+
+.pdfjs-viewer {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pdfjs-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #40505a;
+  padding: 8px 10px;
+  font-size: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.pdfjs-toolbar strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.pdfjs-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdfjs-controls button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: #40505a;
+  cursor: pointer;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.pdfjs-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pdfjs-controls span {
+  min-width: 44px;
+  text-align: center;
+  font-weight: 850;
+}
+
+.pdfjs-state {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 12px;
+  text-align: center;
+}
+
+.pdfjs-state.error {
+  border-color: rgba(204, 80, 67, 0.28);
+  background: #fff2ef;
+  color: #9c3f35;
+}
+
+.pdf-page {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pdf-page-label {
+  justify-self: start;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.pdf-page canvas {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(17, 25, 31, 0.08);
+}
+
+.pdf-fallback-text {
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: #24313d;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 .source-text-preview pre {
   margin: 0;
   padding: 16px;
