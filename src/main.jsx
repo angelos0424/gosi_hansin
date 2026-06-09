@@ -1321,6 +1321,119 @@ function AnswerSummaryPanel({ error, onVote, questionType, status, summary }) {
   );
 }
 
+function PdfCanvasViewer({ fallbackText, url }) {
+  const containerRef = useRef(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [pageCount, setPageCount] = useState(0);
+  const [viewerWidth, setViewerWidth] = useState(0);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+
+    const updateWidth = () => setViewerWidth(container.clientWidth || 0);
+    updateWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !url || !viewerWidth) return undefined;
+
+    let cancelled = false;
+    let loadingTask;
+    const renderTasks = [];
+    container.replaceChildren();
+    setError("");
+    setLoading(true);
+    setPageCount(0);
+
+    const renderPdf = async () => {
+      try {
+        const [{ default: pdfWorkerUrl }, pdfjsLib] = await Promise.all([
+          import("pdfjs-dist/build/pdf.worker.mjs?url"),
+          import("pdfjs-dist"),
+        ]);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        loadingTask = pdfjsLib.getDocument({ url });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        setPageCount(pdf.numPages);
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          if (cancelled) break;
+
+          const page = await pdf.getPage(pageNumber);
+          if (cancelled) break;
+
+          const baseViewport = page.getViewport({ scale: 1 });
+          const scale = Math.min((viewerWidth - 24) / baseViewport.width, 2);
+          const cssViewport = page.getViewport({ scale });
+          const outputScale = window.devicePixelRatio || 1;
+          const renderViewport = page.getViewport({ scale: scale * outputScale });
+          const pageShell = document.createElement("div");
+          const pageLabel = document.createElement("span");
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+
+          pageShell.className = "pdf-page";
+          pageLabel.className = "pdf-page-label";
+          pageLabel.textContent = `${pageNumber} / ${pdf.numPages}`;
+          canvas.width = Math.floor(renderViewport.width);
+          canvas.height = Math.floor(renderViewport.height);
+          canvas.style.width = `${Math.floor(cssViewport.width)}px`;
+          canvas.style.height = `${Math.floor(cssViewport.height)}px`;
+
+          pageShell.append(pageLabel, canvas);
+          container.append(pageShell);
+
+          const renderTask = page.render({ canvasContext: context, viewport: renderViewport });
+          renderTasks.push(renderTask);
+          await renderTask.promise;
+        }
+      } catch (renderError) {
+        if (!cancelled && renderError?.name !== "RenderingCancelledException") {
+          setError("PDF를 불러오지 못했습니다. 아래 추출 텍스트를 확인하거나 원본 파일을 열어주세요.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    renderPdf();
+
+    return () => {
+      cancelled = true;
+      renderTasks.forEach((task) => task.cancel());
+      loadingTask?.destroy();
+    };
+  }, [url, viewerWidth]);
+
+  return (
+    <div className="pdfjs-viewer">
+      <div className="pdfjs-toolbar">
+        <strong>PDF 미리보기</strong>
+        <span>{pageCount ? `${pageCount}쪽` : "불러오는 중"}</span>
+      </div>
+      {loading && <div className="pdfjs-state">PDF를 불러오는 중입니다.</div>}
+      {error && <div className="pdfjs-state error">{error}</div>}
+      <div className="pdf-pages" ref={containerRef} />
+      {error && fallbackText && <pre className="pdf-fallback-text">{fallbackText}</pre>}
+    </div>
+  );
+}
+
 function SourceModal({ document, onClose }) {
   const [usesMobilePdfFallback, setUsesMobilePdfFallback] = useState(false);
 
@@ -1392,8 +1505,8 @@ function SourceModal({ document, onClose }) {
         ) : isMobilePdf ? (
           <div className="source-text-preview mobile-pdf-preview">
             <div className="mobile-pdf-notice">
-              <strong>모바일에서는 PDF가 바로 표시되지 않을 수 있습니다.</strong>
-              <p>브라우저 내장 PDF 뷰어 대신 추출된 원문 텍스트를 먼저 보여드립니다. 원본 PDF는 새 탭에서 열거나 파일로 받을 수 있습니다.</p>
+              <strong>모바일 PDF 뷰어</strong>
+              <p>PDF.js로 원본 PDF를 화면 안에서 바로 렌더링합니다. 브라우저가 렌더링을 지원하지 않으면 추출 텍스트로 대체됩니다.</p>
               <div className="mobile-pdf-actions">
                 <a className="source-link" href={url} target="_blank" rel="noreferrer">
                   <FileText size={17} /> 새 탭에서 PDF 열기
@@ -1403,7 +1516,7 @@ function SourceModal({ document, onClose }) {
                 </a>
               </div>
             </div>
-            <pre>{document.rawText}</pre>
+            <PdfCanvasViewer fallbackText={document.rawText} url={url} />
           </div>
         ) : (
           <div className="source-text-preview">
