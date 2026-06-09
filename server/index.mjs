@@ -179,6 +179,12 @@ function validateUserId(rawUserId) {
   return userId;
 }
 
+function safeCompare(a, b) {
+  const aHash = crypto.createHash("sha256").update(String(a)).digest();
+  const bHash = crypto.createHash("sha256").update(String(b)).digest();
+  return crypto.timingSafeEqual(aHash, bHash);
+}
+
 function isAdminRequest(req) {
   const authorization = req.headers.authorization || "";
   const [scheme, encoded] = authorization.split(" ");
@@ -190,7 +196,7 @@ function isAdminRequest(req) {
     if (separator < 0) return false;
     const id = decoded.slice(0, separator);
     const password = decoded.slice(separator + 1);
-    return id === adminId && password === adminPassword;
+    return safeCompare(id, adminId) && safeCompare(password, adminPassword);
   } catch {
     return false;
   }
@@ -442,10 +448,20 @@ async function handleAdminLogin(req, res) {
   }
 
   const { id, password } = await readJsonBody(req);
-  if (id === adminId && password === adminPassword) {
+  if (safeCompare(id, adminId) && safeCompare(password, adminPassword)) {
     return json(res, 200, { ok: true });
   }
   return json(res, 401, { error: "invalid admin credentials" });
+}
+
+function objectionExists(objectionId) {
+  const stmt = db.prepare("SELECT 1 FROM objections WHERE id = ?");
+  try {
+    stmt.bind([objectionId]);
+    return stmt.step();
+  } finally {
+    stmt.free();
+  }
 }
 
 function getObjectionRows() {
@@ -485,6 +501,9 @@ async function handleAdminObjections(req, res, objectionId = "") {
     const nextStatus = validateObjectionStatus(status);
     if (!nextStatus) {
       return json(res, 400, { error: "status must be new, progress, or done" });
+    }
+    if (!objectionExists(objectionId)) {
+      return json(res, 404, { error: "objection not found" });
     }
 
     db.run("UPDATE objections SET status = ?, updated_at = ? WHERE id = ?", [nextStatus, Date.now(), objectionId]);

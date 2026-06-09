@@ -1391,10 +1391,16 @@ function SourceModal({ document, onClose }) {
 }
 
 const objectionStatusLabels = {
-  new: "new",
-  progress: "progress",
-  done: "done",
+  new: "신규",
+  progress: "처리 중",
+  done: "완료",
 };
+
+function encodeBasicAuth(id, password) {
+  const bytes = new TextEncoder().encode(`${id}:${password}`);
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  return btoa(binary);
+}
 
 function formatDateTime(timestamp) {
   if (!timestamp) return "-";
@@ -1441,7 +1447,7 @@ function AdminApp() {
         method: "POST",
         body: JSON.stringify({ id, password }),
       });
-      const nextAuth = btoa(`${id}:${password}`);
+      const nextAuth = encodeBasicAuth(id, password);
       localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, nextAuth);
       setAuth(nextAuth);
       await loadObjections(nextAuth);
@@ -1470,7 +1476,14 @@ function AdminApp() {
         body: JSON.stringify({ status: nextStatus }),
       });
     } catch {
-      setObjections(before);
+      const oldItem = before.find((item) => item.id === id);
+      if (oldItem) {
+        setObjections((items) =>
+          items.map((item) =>
+            item.id === id ? { ...item, status: oldItem.status, updatedAt: oldItem.updatedAt } : item,
+          ),
+        );
+      }
       setError("처리 상태를 저장하지 못했습니다.");
     }
   };
@@ -1591,7 +1604,7 @@ function AdminObjectionCard({ item, onStatusChange }) {
               type="button"
               onClick={() => onStatusChange(item.id, status)}
             >
-              {status}
+              {objectionStatusLabels[status]}
             </button>
           ))}
         </div>
